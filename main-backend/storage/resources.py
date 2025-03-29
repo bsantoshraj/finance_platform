@@ -1,7 +1,7 @@
 # main-backend/storage/resources.py
-from utils.db import init_db
+from utils.db import get_db_connection, init_db as init_db_util
 
-def init_db(user_id):
+def initialize_db(user_id):
     table_definitions = [
         '''
         CREATE TABLE IF NOT EXISTS debts (
@@ -100,9 +100,9 @@ def init_db(user_id):
             user_id INTEGER NOT NULL,
             cfa_id INTEGER NOT NULL,
             advice_type TEXT NOT NULL CHECK(advice_type IN ('product_recommendation', 'investment_diversification', 'debt_restructuring')),
-            details TEXT NOT NULL,  -- JSON: {"recommendation": "Invest in low-risk bonds", "details": "..."}
+            details TEXT NOT NULL,
             created_at TEXT NOT NULL
         )
         '''
     ]
-    init_db(user_id, table_definitions)
+    init_db_util(user_id, table_definitions)

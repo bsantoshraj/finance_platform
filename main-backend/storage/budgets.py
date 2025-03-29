@@ -2,7 +2,7 @@
 import json
 from datetime import datetime
 from utils.db import get_db_connection
-from .resources import init_db
+from .resources import initialize_db
 from .income import get_all_income
 from .expenses import get_all_expenses
 from .goals import get_monthly_allocations

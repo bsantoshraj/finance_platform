@@ -1,29 +1,29 @@
-// frontend/src/components/Insurance.js
+// frontend/src/components/Goals.js
 import React, { useState, useEffect, useCallback } from 'react';
 import { useFinance } from '../context/FinanceContext';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import Modal from 'react-modal';
-import AddEditInsurance from './AddEditInsurance';
+import AddEditGoal from './AddEditGoal';
 
 Modal.setAppElement('#root');
 
-function Insurance() {
+function Goals() {
   const { token, setLoading, setError, loading, error } = useFinance();
-  const [insurances, setInsurances] = useState([]);
+  const [goals, setGoals] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedInsurance, setSelectedInsurance] = useState(null);
+  const [selectedGoal, setSelectedGoal] = useState(null);
 
-  const fetchInsurances = useCallback(async () => {
+  const fetchGoals = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await axios.get('http://localhost:5000/api/insurance', {
+      const response = await axios.get('http://localhost:5000/api/goals', {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setInsurances(response.data);
+      setGoals(response.data);
     } catch (err) {
-      const errorMessage = err.response?.data?.error || 'Error fetching insurance';
+      const errorMessage = err.response?.data?.error || 'Error fetching goals';
       setError(errorMessage);
       toast.error(errorMessage);
     } finally {
@@ -35,13 +35,13 @@ function Insurance() {
     setLoading(true);
     setError(null);
     try {
-      await axios.delete(`http://localhost:5000/api/insurance/${id}`, {
+      await axios.delete(`http://localhost:5000/api/goals/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setInsurances(insurances.filter((item) => item.id !== id));
-      toast.success('Insurance deleted successfully!');
+      setGoals(goals.filter((item) => item.id !== id));
+      toast.success('Goal deleted successfully!');
     } catch (err) {
-      const errorMessage = err.response?.data?.error || 'Error deleting insurance';
+      const errorMessage = err.response?.data?.error || 'Error deleting goal';
       setError(errorMessage);
       toast.error(errorMessage);
     } finally {
@@ -50,45 +50,41 @@ function Insurance() {
   };
 
   useEffect(() => {
-    if (token) fetchInsurances();
-  }, [token, fetchInsurances]);
+    if (token) fetchGoals();
+  }, [token, fetchGoals]);
 
-  const openModal = (insurance = null) => {
-    setSelectedInsurance(insurance);
+  const openModal = (goal = null) => {
+    setSelectedGoal(goal);
     setIsModalOpen(true);
   };
 
   const closeModal = () => {
     setIsModalOpen(false);
-    setSelectedInsurance(null);
-    fetchInsurances();
+    setSelectedGoal(null);
+    fetchGoals();
   };
 
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-text">Insurance</h1>
+        <h1 className="text-3xl font-bold text-text">Goals</h1>
         <button onClick={() => openModal()} className="btn-primary">
-          Add Insurance
+          Add Goal
         </button>
       </div>
       {loading && <p className="text-muted">Loading...</p>}
       {error && <p className="text-red-500 mb-4">{error}</p>}
-      {insurances.length === 0 && !loading && !error && (
-        <p className="text-muted">No insurance found. Add an insurance policy to get started!</p>
+      {goals.length === 0 && !loading && !error && (
+        <p className="text-muted">No goals found. Add a goal to get started!</p>
       )}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {insurances.map((item) => (
+        {goals.map((item) => (
           <div key={item.id} className="card">
             <h2 className="text-xl font-semibold text-text mb-2">{item.name}</h2>
-            <p className="text-muted">Type: {item.insurance_type}</p>
-            <p className="text-muted">Premium: ${item.premium}</p>
-            <p className="text-muted">Coverage: ${item.coverage}</p>
-            <p className="text-muted">Premium Term: {item.premium_term}</p>
-            <p className="text-muted">Start Date: {item.start_date}</p>
-            <p className="text-muted">End Date: {item.end_date}</p>
-            <p className="text-muted">Maturity Value: ${item.maturity_value}</p>
-            <p className="text-muted">Status: {item.is_active ? 'Active' : 'Inactive'}</p>
+            <p className="text-muted">Target Amount: ${item.target_amount}</p>
+            <p className="text-muted">Current Amount: ${item.current_amount}</p>
+            <p className="text-muted">Target Date: {item.target_date}</p>
+            <p className="text-muted">Allocations: {item.allocations.length}</p>
             <div className="mt-4 flex space-x-2">
               <button onClick={() => openModal(item)} className="btn-primary">
                 Edit
@@ -107,10 +103,10 @@ function Insurance() {
         className="card max-w-md mx-auto mt-20"
         overlayClassName="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center"
       >
-        <AddEditInsurance insurance={selectedInsurance} onClose={closeModal} />
+        <AddEditGoal goal={selectedGoal} onClose={closeModal} />
       </Modal>
     </div>
   );
 }
 
-export default Insurance;
+export default Goals;

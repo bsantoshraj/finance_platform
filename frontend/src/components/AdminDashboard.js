@@ -1,3 +1,4 @@
+// frontend/src/components/AdminDashboard.js
 import React, { useEffect, useState } from 'react';
 import { useFinance } from '../context/FinanceContext';
 import axios from 'axios';

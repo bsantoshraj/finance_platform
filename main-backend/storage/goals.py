@@ -2,7 +2,7 @@
 import json
 from datetime import datetime
 from utils.db import get_db_connection
-from .resources import init_db
+from .resources import initialize_db
 from .income import get_income_by_id
 
 def get_all_goals(user_id):
@@ -11,19 +11,41 @@ def get_all_goals(user_id):
     cursor.execute('SELECT * FROM goals WHERE user_id = ?', (user_id,))
     goals = [dict(row) for row in cursor.fetchall()]
     for goal in goals:
-        if goal['allocations']:
-            goal['allocations'] = json.loads(goal['allocations'])
-        else:
-            goal['allocations'] = []
+        goal['allocations'] = json.loads(goal['allocations']) if goal['allocations'] else []
     conn.close()
     return goals
 
 def add_goal(user_id, data):
+    required_fields = ['name', 'target_amount', 'current_amount', 'target_date']
+    if not all(field in data for field in required_fields):
+        raise ValueError("Missing required fields")
+
+    print(f"Received data: {data}")
+    print(f"Target amount before conversion: {data['target_amount']}, Type: {type(data['target_amount'])}")
+
+    if data['target_amount'] is None or data['target_amount'] == '':
+        raise ValueError("Target amount is required")
+    try:
+        target_amount = float(data['target_amount'])
+    except (ValueError, TypeError):
+        raise ValueError("Target amount must be a valid number")
+    if target_amount <= 0:
+        raise ValueError("Target amount must be a positive number")
+
+    if data['current_amount'] is None or data['current_amount'] == '':
+        raise ValueError("Current amount is required")
+    try:
+        current_amount = float(data['current_amount'])
+    except (ValueError, TypeError):
+        raise ValueError("Current amount must be a valid number")
+    if current_amount < 0:
+        raise ValueError("Current amount must be a non-negative number")
+
     conn = get_db_connection(user_id)
     cursor = conn.cursor()
     cursor.execute(
         'INSERT INTO goals (user_id, name, target_amount, current_amount, target_date, allocations) VALUES (?, ?, ?, ?, ?, ?)',
-        (user_id, data['name'], data['target_amount'], data['current_amount'], data['target_date'], json.dumps([]))
+        (user_id, data['name'], target_amount, current_amount, data['target_date'], json.dumps([]))
     )
     conn.commit()
     goal_id = cursor.lastrowid
@@ -33,20 +55,46 @@ def add_goal(user_id, data):
     conn.close()
     return goal
 
+
 def update_goal(user_id, goal_id, data):
+    required_fields = ['name', 'target_amount', 'current_amount', 'target_date']
+    if not all(field in data for field in required_fields):
+        raise ValueError("Missing required fields")
+
+    # Convert target_amount to float and validate
+    try:
+        target_amount = float(data['target_amount'])
+    except (ValueError, TypeError):
+        raise ValueError("Target amount must be a valid number")
+    if target_amount <= 0:
+        raise ValueError("Target amount must be a positive number")
+
+    # Convert current_amount to float and validate
+    try:
+        current_amount = float(data['current_amount'])
+    except (ValueError, TypeError):
+        raise ValueError("Current amount must be a valid number")
+    if current_amount < 0:
+        raise ValueError("Current amount must be a non-negative number")
+
     conn = get_db_connection(user_id)
     cursor = conn.cursor()
+    cursor.execute('SELECT * FROM goals WHERE id = ? AND user_id = ?', (goal_id, user_id))
+    goal = cursor.fetchone()
+    if not goal:
+        conn.close()
+        return None
+
     cursor.execute(
-        'UPDATE goals SET name = ?, target_amount = ?, current_amount = ?, target_date = ?, allocations = ? WHERE id = ? AND user_id = ?',
-        (data['name'], data['target_amount'], data['current_amount'], data['target_date'], json.dumps(data.get('allocations', [])), goal_id, user_id)
+        'UPDATE goals SET name = ?, target_amount = ?, current_amount = ?, target_date = ? WHERE id = ? AND user_id = ?',
+        (data['name'], target_amount, current_amount, data['target_date'], goal_id, user_id)
     )
     conn.commit()
     cursor.execute('SELECT * FROM goals WHERE id = ?', (goal_id,))
-    goal = dict(cursor.fetchone()) if cursor.rowcount > 0 else None
-    if goal:
-        goal['allocations'] = json.loads(goal['allocations']) if goal['allocations'] else []
+    updated_goal = dict(cursor.fetchone())
+    updated_goal['allocations'] = json.loads(updated_goal['allocations']) if updated_goal['allocations'] else []
     conn.close()
-    return goal
+    return updated_goal
 
 def delete_goal(user_id, goal_id):
     conn = get_db_connection(user_id)
@@ -57,124 +105,78 @@ def delete_goal(user_id, goal_id):
     conn.close()
     return success
 
-def get_total_allocations_for_income(user_id, income_id, month):
-    """
-    Calculate total allocations for a given income_id in a specific month (YYYY-MM).
-    """
-    goals = get_all_goals(user_id)
-    total = 0
-    for goal in goals:
-        for allocation in goal['allocations']:
-            if allocation.get('income_id') != income_id:
-                continue
-            allocation_date = datetime.strptime(allocation['date'], '%Y-%m-%d')
-            allocation_month = allocation_date.strftime('%Y-%m')
-            if allocation_month == month:
-                total += float(allocation['amount'])
-    return total
+def add_allocation(user_id, goal_id, data):
+    if 'income_id' not in data or 'amount' not in data:
+        raise ValueError("Missing required fields: income_id, amount")
 
-def add_allocation(user_id, goal_id, allocation_data):
+    # Convert amount to float and validate
+    try:
+        amount = float(data['amount'])
+    except (ValueError, TypeError):
+        raise ValueError("Amount must be a valid number")
+    if amount <= 0:
+        raise ValueError("Amount must be a positive number")
+
+    # Verify the income record exists and belongs to the user
+    income = get_income_by_id(user_id, data['income_id'])
+    if not income:
+        raise ValueError("Income record not found")
+
     conn = get_db_connection(user_id)
     cursor = conn.cursor()
     cursor.execute('SELECT * FROM goals WHERE id = ? AND user_id = ?', (goal_id, user_id))
     goal = cursor.fetchone()
     if not goal:
         conn.close()
-        return None, "Goal not found"
+        raise ValueError("Goal not found")
 
     goal = dict(goal)
     allocations = json.loads(goal['allocations']) if goal['allocations'] else []
-
-    # Validate income_id if provided
-    if 'income_id' in allocation_data:
-        income = get_income_by_id(user_id, allocation_data['income_id'])
-        if not income:
-            conn.close()
-            return None, f"Income with ID {allocation_data['income_id']} not found"
-        # Check if the income amount is sufficient
-        income_amount = float(income['amount'])
-        if income['term'] != 'monthly':
-            conn.close()
-            return None, "Income must be monthly for allocation"
-        
-        # Calculate total allocations for this income in the given month
-        allocation_date = datetime.strptime(allocation_data['date'], '%Y-%m-%d')
-        month = allocation_date.strftime('%Y-%m')
-        total_allocated = get_total_allocations_for_income(user_id, allocation_data['income_id'], month)
-        new_allocation_amount = float(allocation_data['amount'])
-        if total_allocated + new_allocation_amount > income_amount:
-            conn.close()
-            return None, f"Total allocations ({total_allocated + new_allocation_amount}) exceed income amount ({income_amount}) for month {month}"
-
-    # Add the allocation
+    current_amount = goal['current_amount'] + amount
     allocations.append({
-        'amount': allocation_data['amount'],
-        'date': allocation_data['date'],
-        'income_id': allocation_data.get('income_id')
+        'income_id': data['income_id'],
+        'amount': amount,
+        'date': datetime.now().strftime('%Y-%m-%d')
     })
-    current_amount = float(goal['current_amount']) + float(allocation_data['amount'])
-
     cursor.execute(
-        'UPDATE goals SET allocations = ?, current_amount = ? WHERE id = ? AND user_id = ?',
-        (json.dumps(allocations), current_amount, goal_id, user_id)
+        'UPDATE goals SET current_amount = ?, allocations = ? WHERE id = ? AND user_id = ?',
+        (current_amount, json.dumps(allocations), goal_id, user_id)
     )
     conn.commit()
-
     cursor.execute('SELECT * FROM goals WHERE id = ?', (goal_id,))
     updated_goal = dict(cursor.fetchone())
     updated_goal['allocations'] = json.loads(updated_goal['allocations']) if updated_goal['allocations'] else []
     conn.close()
-    return updated_goal, None
+    return updated_goal
 
-def get_monthly_allocations(user_id, start_date=None, end_date=None):
-    """
-    Aggregate allocations by month for all goals.
-    Returns a dictionary with monthly totals.
-    """
-    goals = get_all_goals(user_id)
-    monthly_allocations = {}
-
-    for goal in goals:
-        for allocation in goal['allocations']:
-            allocation_date = datetime.strptime(allocation['date'], '%Y-%m-%d')
-            # Filter by date range if provided
-            if start_date and allocation_date < datetime.strptime(start_date, '%Y-%m-%d'):
-                continue
-            if end_date and allocation_date > datetime.strptime(end_date, '%Y-%m-%d'):
-                continue
-
-            month_key = allocation_date.strftime('%Y-%m')
-            if month_key not in monthly_allocations:
-                monthly_allocations[month_key] = 0
-            monthly_allocations[month_key] += float(allocation['amount'])
-
-    return monthly_allocations
-
-def get_allocation_history(user_id, goal_id, start_date=None, end_date=None, income_id=None):
-    """
-    Retrieve allocation history for a specific goal, with optional filters.
-    """
+def get_monthly_allocations(user_id, goal_id, month):
     conn = get_db_connection(user_id)
     cursor = conn.cursor()
     cursor.execute('SELECT * FROM goals WHERE id = ? AND user_id = ?', (goal_id, user_id))
     goal = cursor.fetchone()
-    conn.close()
     if not goal:
+        conn.close()
         return None
 
     goal = dict(goal)
     allocations = json.loads(goal['allocations']) if goal['allocations'] else []
+    monthly_allocations = [
+        allocation for allocation in allocations
+        if allocation['date'].startswith(month)
+    ]
+    conn.close()
+    return monthly_allocations
 
-    filtered_allocations = []
-    for allocation in allocations:
-        allocation_date = datetime.strptime(allocation['date'], '%Y-%m-%d')
-        # Apply filters
-        if start_date and allocation_date < datetime.strptime(start_date, '%Y-%m-%d'):
-            continue
-        if end_date and allocation_date > datetime.strptime(end_date, '%Y-%m-%d'):
-            continue
-        if income_id is not None and allocation.get('income_id') != income_id:
-            continue
-        filtered_allocations.append(allocation)
+def get_allocation_history(user_id, goal_id):
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM goals WHERE id = ? AND user_id = ?', (goal_id, user_id))
+    goal = cursor.fetchone()
+    if not goal:
+        conn.close()
+        return None
 
-    return filtered_allocations
+    goal = dict(goal)
+    allocations = json.loads(goal['allocations']) if goal['allocations'] else []
+    conn.close()
+    return allocations

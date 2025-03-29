@@ -1,6 +1,6 @@
 # main-backend/routes/investments.py
 from flask import Blueprint, request, jsonify
-from storage.resources import init_db
+from storage.resources import initialize_db
 from storage.investments import get_all_investments, add_investment, update_investment, delete_investment
 from middleware import token_required
 
@@ -9,7 +9,7 @@ bp = Blueprint('investments', __name__)
 @bp.route('', methods=['GET'], endpoint='get_investments', strict_slashes=False)
 @token_required
 def get_investments_route():
-    init_db(request.user_id)
+    initialize_db(request.user_id)
     investments = get_all_investments(request.user_id)
     return jsonify(investments), 200
 
@@ -29,7 +29,7 @@ def add_investment_route():
     if not isinstance(data['details'], dict):
         return jsonify({'error': 'Details must be a dictionary'}), 400
 
-    init_db(request.user_id)
+    initialize_db(request.user_id)
     try:
         investment = add_investment(request.user_id, data)
         return jsonify(investment), 201
@@ -52,7 +52,7 @@ def update_investment_route(id):
     if not isinstance(data['details'], dict):
         return jsonify({'error': 'Details must be a dictionary'}), 400
 
-    init_db(request.user_id)
+    initialize_db(request.user_id)
     try:
         investment = update_investment(request.user_id, id, data)
         if investment:
@@ -64,7 +64,7 @@ def update_investment_route(id):
 @bp.route('/<int:id>', methods=['DELETE'], endpoint='delete_investment', strict_slashes=False)
 @token_required
 def delete_investment_route(id):
-    init_db(request.user_id)
+    initialize_db(request.user_id)
     if delete_investment(request.user_id, id):
         return jsonify({'message': 'Investment deleted'}), 200
     return jsonify({'error': 'Investment not found'}), 404

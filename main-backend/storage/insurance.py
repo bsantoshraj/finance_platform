@@ -1,6 +1,6 @@
 # main-backend/storage/insurance.py
 from utils.db import get_db_connection
-from .resources import init_db
+from .resources import initialize_db
 
 # Define valid insurance types and premium terms
 VALID_INSURANCE_TYPES = ["Medical", "Term", "Asset", "Special"]

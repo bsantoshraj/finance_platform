@@ -1,6 +1,6 @@
 # main-backend/routes/debts.py
 from flask import Blueprint, request, jsonify
-from storage.resources import init_db
+from storage.resources import initialize_db
 from storage.debts import get_all_debts, add_debt, update_debt, delete_debt, add_payment, add_interest_rate_change, get_amortization_schedule
 from middleware import token_required
 
@@ -9,7 +9,7 @@ bp = Blueprint('debts', __name__)
 @bp.route('', methods=['GET'], endpoint='get_debts', strict_slashes=False)
 @token_required
 def get_debts_route():
-    init_db(request.user_id)
+    initialize_db(request.user_id)
     debts = get_all_debts(request.user_id)
     return jsonify(debts), 200
 
@@ -26,7 +26,7 @@ def add_debt_route():
         return jsonify({'error': 'Date must be a non-empty string'}), 400
     if data['debt_type'] not in ['fixed', 'variable']:
         return jsonify({'error': 'Debt type must be "fixed" or "variable"'}), 400
-    init_db(request.user_id)
+    initialize_db(request.user_id)
     debt = add_debt(request.user_id, data)
     return jsonify(debt), 201
 
@@ -43,7 +43,7 @@ def update_debt_route(id):
         return jsonify({'error': 'Date must be a non-empty string'}), 400
     if data['debt_type'] not in ['fixed', 'variable']:
         return jsonify({'error': 'Debt type must be "fixed" or "variable"'}), 400
-    init_db(request.user_id)
+    initialize_db(request.user_id)
     debt = update_debt(request.user_id, id, data)
     if debt:
         return jsonify(debt), 200
@@ -52,7 +52,7 @@ def update_debt_route(id):
 @bp.route('/<int:id>', methods=['DELETE'], endpoint='delete_debt', strict_slashes=False)
 @token_required
 def delete_debt_route(id):
-    init_db(request.user_id)
+    initialize_db(request.user_id)
     if delete_debt(request.user_id, id):
         return jsonify({'message': 'Debt deleted'}), 200
     return jsonify({'error': 'Debt not found'}), 404
@@ -68,7 +68,7 @@ def add_payment_route(id):
         return jsonify({'error': 'Amount must be a positive number'}), 400
     if not isinstance(data['date'], str) or not data['date'].strip():
         return jsonify({'error': 'Date must be a non-empty string'}), 400
-    init_db(request.user_id)
+    initialize_db(request.user_id)
     debt = add_payment(request.user_id, id, data)
     if debt:
         return jsonify(debt), 200
@@ -98,7 +98,7 @@ def add_interest_rate_change_route(id):
         return jsonify({'error': 'Interest rate changes are only allowed for variable-rate debts'}), 400
     conn.close()
 
-    init_db(request.user_id)
+    initialize_db(request.user_id)
     debt = add_interest_rate_change(request.user_id, id, data)
     if debt:
         return jsonify(debt), 200
@@ -119,7 +119,7 @@ def get_amortization_route(id):
         'date': params['annual_lumpsum_date']
     } if params.get('annual_lumpsum_amount') and params.get('annual_lumpsum_date') else None
 
-    init_db(request.user_id)
+    initialize_db(request.user_id)
     schedule = get_amortization_schedule(
         request.user_id,
         id,

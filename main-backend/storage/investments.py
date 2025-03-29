@@ -1,7 +1,7 @@
 # main-backend/storage/investments.py
 import json
 from utils.db import get_db_connection
-from .resources import init_db
+from .resources import initialize_db
 
 # Define required fields for each investment type
 INVESTMENT_TYPE_FIELDS = {

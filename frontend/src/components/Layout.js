@@ -1,3 +1,4 @@
+// frontend/src/components/Layout.js
 import React from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useFinance } from '../context/FinanceContext';
@@ -105,36 +106,6 @@ function Layout() {
           >
             Budget
           </NavLink>
-          <NavLink
-            to="/chatbot"
-            className={({ isActive }) =>
-              `block px-4 py-2 text-muted hover:bg-primary hover:text-white ${
-                isActive ? 'bg-primary text-white' : ''
-              }`
-            }
-          >
-            Chatbot
-          </NavLink>
-          <NavLink
-            to="/recommendations"
-            className={({ isActive }) =>
-              `block px-4 py-2 text-muted hover:bg-primary hover:text-white ${
-                isActive ? 'bg-primary text-white' : ''
-              }`
-            }
-          >
-            Recommendations
-          </NavLink>
-          <NavLink
-            to="/advisories"
-            className={({ isActive }) =>
-              `block px-4 py-2 text-muted hover:bg-primary hover:text-white ${
-                isActive ? 'bg-primary text-white' : ''
-              }`
-            }
-          >
-            Advisories
-          </NavLink>
         </>
       );
     } else if (user.role === 'CFA') {
@@ -174,7 +145,7 @@ function Layout() {
   return (
     <div className="flex min-h-screen bg-background">
       <aside className="w-64 bg-white shadow-lg">
-        <div className="p-4">
+        <div className="px-4 py-2">
           <h1 className="text-2xl font-bold text-primary">Finance Platform</h1>
         </div>
         <nav className="mt-4">

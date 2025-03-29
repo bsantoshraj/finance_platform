@@ -1,4 +1,5 @@
-import React, { createContext, useState, useEffect } from 'react';
+// frontend/src/context/FinanceContext.js
+import React, { createContext, useState, useEffect, useContext } from 'react';
 
 const FinanceContext = createContext();
 
@@ -25,4 +26,13 @@ const FinanceProvider = ({ children }) => {
   );
 };
 
-export { FinanceContext, FinanceProvider };
+// Custom hook to use the FinanceContext
+const useFinance = () => {
+  const context = useContext(FinanceContext);
+  if (!context) {
+    throw new Error('useFinance must be used within a FinanceProvider');
+  }
+  return context;
+};
+
+export { FinanceContext, FinanceProvider, useFinance };

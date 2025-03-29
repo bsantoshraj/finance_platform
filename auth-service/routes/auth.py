@@ -7,7 +7,7 @@ from middleware import token_required, JWT_SECRET
 
 bp = Blueprint('auth', __name__)
 
-@bp.route('/register', methods=['POST'], strict_slashes=False)
+@bp.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
     username = data.get('username')
@@ -28,7 +28,7 @@ def register():
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
 
-@bp.route('/login', methods=['POST'], strict_slashes=False)
+@bp.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
     username = data.get('username')
@@ -49,12 +49,12 @@ def login():
 
     return jsonify({'token': token, 'user_id': user['id'], 'role': user['role'], 'status': user['status']}), 200
 
-@bp.route('/validate-token', methods=['POST'], strict_slashes=False)
+@bp.route('/validate-token', methods=['POST'])
 @token_required
 def validate_token():
     return jsonify({'user_id': request.user_id, 'role': request.role, 'status': request.status}), 200
 
-@bp.route('/cfa/pending', methods=['GET'], strict_slashes=False)
+@bp.route('/cfa/pending', methods=['GET'])
 @token_required
 def get_pending_cfas():
     if request.role != 'admin':
@@ -62,7 +62,7 @@ def get_pending_cfas():
     pending_cfas = get_users_by_role_and_status('CFA', 'pending')
     return jsonify(pending_cfas), 200
 
-@bp.route('/cfa/<int:cfa_id>/approve', methods=['POST'], strict_slashes=False)
+@bp.route('/cfa/<int:cfa_id>/approve', methods=['POST'])
 @token_required
 def approve_cfa(cfa_id):
     if request.role != 'admin':
@@ -75,7 +75,7 @@ def approve_cfa(cfa_id):
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
 
-@bp.route('/cfa/<int:cfa_id>/reject', methods=['POST'], strict_slashes=False)
+@bp.route('/cfa/<int:cfa_id>/reject', methods=['POST'])
 @token_required
 def reject_cfa(cfa_id):
     if request.role != 'admin':

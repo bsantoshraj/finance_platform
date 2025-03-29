@@ -1,6 +1,6 @@
 # main-backend/routes/income.py
 from flask import Blueprint, request, jsonify
-from storage.resources import init_db
+from storage.resources import initialize_db
 from storage.income import get_all_income, add_income, update_income, delete_income
 from middleware import token_required
 
@@ -9,7 +9,8 @@ bp = Blueprint('income', __name__)
 @bp.route('', methods=['GET'], endpoint='get_income', strict_slashes=False)
 @token_required
 def get_income_route():
-    init_db(request.user_id)
+    initialize_db(request.user_id)
+    #initialize_db(request.user_id)
     income = get_all_income(request.user_id)
     return jsonify(income), 200
 
@@ -24,7 +25,7 @@ def add_income_route():
         return jsonify({'error': 'Name must be a non-empty string'}), 400
     if not isinstance(data['date'], str) or not data['date'].strip():
         return jsonify({'error': 'Date must be a non-empty string'}), 400
-    init_db(request.user_id)
+    initialize_db(request.user_id)
     income = add_income(request.user_id, data)
     return jsonify(income), 201
 
@@ -39,7 +40,7 @@ def update_income_route(id):
         return jsonify({'error': 'Name must be a non-empty string'}), 400
     if not isinstance(data['date'], str) or not data['date'].strip():
         return jsonify({'error': 'Date must be a non-empty string'}), 400
-    init_db(request.user_id)
+    initialize_db(request.user_id)
     income = update_income(request.user_id, id, data)
     if income:
         return jsonify(income), 200
@@ -48,7 +49,7 @@ def update_income_route(id):
 @bp.route('/<int:id>', methods=['DELETE'], endpoint='delete_income', strict_slashes=False)
 @token_required
 def delete_income_route(id):
-    init_db(request.user_id)
+    initialize_db(request.user_id)
     if delete_income(request.user_id, id):
         return jsonify({'message': 'Income deleted'}), 200
     return jsonify({'error': 'Income not found'}), 404

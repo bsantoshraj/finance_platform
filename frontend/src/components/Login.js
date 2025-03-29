@@ -1,3 +1,4 @@
+// frontend/src/components/Login.js
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useFinance } from '../context/FinanceContext';
@@ -18,7 +19,14 @@ function Login() {
     try {
       const response = await axios.post('http://localhost:5001/login', formData);
       setToken(response.data.token);
-      setUser({ id: response.data.user_id, username: formData.username, role: response.data.role, status: response.data.status });
+      // Ensure status is included, default to 'approved' if missing
+      const userStatus = response.data.status || 'approved';
+      setUser({
+        id: response.data.user_id,
+        username: formData.username,
+        role: response.data.role,
+        status: userStatus,
+      });
       toast.success('Logged in successfully!');
       navigate('/dashboard');
     } catch (err) {

@@ -2,7 +2,7 @@
 import json
 from datetime import datetime
 from utils.db import get_db_connection
-from .resources import init_db
+from .resources import initialize_db
 
 # Define valid advice types
 VALID_ADVICE_TYPES = ['product_recommendation', 'investment_diversification', 'debt_restructuring']

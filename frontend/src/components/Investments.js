@@ -1,3 +1,4 @@
+// frontend/src/components/Investments.js
 import React, { useState, useEffect, useCallback } from 'react';
 import { useFinance } from '../context/FinanceContext';
 import axios from 'axios';

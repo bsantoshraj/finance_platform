@@ -11,6 +11,13 @@ import Dashboard from './components/Dashboard';
 import UserDashboard from './components/UserDashboard';
 import CFADashboard from './components/CFADashboard';
 import AdminDashboard from './components/AdminDashboard';
+import Debts from './components/Debts';
+import Income from './components/Income';
+import Investments from './components/Investments';
+import Insurance from './components/Insurance';
+import Expenses from './components/Expenses';
+import Goals from './components/Goals';
+import Budget from './components/Budget';
 
 function App() {
   return (
@@ -25,6 +32,13 @@ function App() {
             <Route path="user-dashboard" element={<UserDashboard />} />
             <Route path="cfa-dashboard" element={<CFADashboard />} />
             <Route path="admin-dashboard" element={<AdminDashboard />} />
+            <Route path="debts" element={<Debts />} />
+            <Route path="income" element={<Income />} />
+            <Route path="investments" element={<Investments />} />
+            <Route path="insurance" element={<Insurance />} />
+            <Route path="expenses" element={<Expenses />} />
+            <Route path="goals" element={<Goals />} />
+            <Route path="budget" element={<Budget />} />
           </Route>
         </Routes>
       </Router>

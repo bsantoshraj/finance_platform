@@ -1,6 +1,6 @@
 # main-backend/storage/expenses.py
 from utils.db import get_db_connection
-from .resources import init_db
+from .resources import initialize_db
 
 def get_all_expenses(user_id):
     conn = get_db_connection(user_id)

@@ -1,3 +1,4 @@
+// frontend/src/components/UserDashboard.js
 import React, { useEffect, useState } from 'react';
 import { useFinance } from '../context/FinanceContext';
 import axios from 'axios';
@@ -29,7 +30,16 @@ function UserDashboard() {
           axios.get('http://localhost:5000/api/debts', { headers: { Authorization: `Bearer ${token}` } }),
           axios.get('http://localhost:5000/api/investments', { headers: { Authorization: `Bearer ${token}` } }),
           axios.get('http://localhost:5000/api/insurance', { headers: { Authorization: `Bearer ${token}` } }),
-          axios.get(`http://localhost:5000/api/budgets/variance/${month}`, { headers: { Authorization: `Bearer ${token}` } }),
+          // Handle 404 for variance by using a fallback
+          axios.get(`http://localhost:5000/api/budgets/variance/${month}`, { headers: { Authorization: `Bearer ${token}` } })
+            .catch(err => {
+              if (err.response?.status === 404) {
+                toast.info('No budget found for this month. Please set up a budget to track savings and allocations.');
+                // If budget not found, return a default response
+                return { data: { total_savings: 0, total_allocations: 0 } };
+              }
+              throw err; // Re-throw other errors
+            }),
         ]);
 
         const totalIncome = incomeRes.data.reduce((sum, item) => sum + parseFloat(item.amount), 0);

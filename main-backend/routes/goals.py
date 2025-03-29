@@ -1,6 +1,6 @@
 # main-backend/routes/goals.py
 from flask import Blueprint, request, jsonify
-from storage.resources import init_db
+from storage.resources import initialize_db
 from storage.goals import get_all_goals, add_goal, update_goal, delete_goal, add_allocation, get_monthly_allocations, get_allocation_history
 from middleware import token_required
 
@@ -9,7 +9,7 @@ bp = Blueprint('goals', __name__)
 @bp.route('', methods=['GET'], endpoint='get_goals', strict_slashes=False)
 @token_required
 def get_goals_route():
-    init_db(request.user_id)
+    initialize_db(request.user_id)
     goals = get_all_goals(request.user_id)
     return jsonify(goals), 200
 
@@ -28,7 +28,7 @@ def add_goal_route():
         return jsonify({'error': 'Target amount must be a positive number'}), 400
     if not isinstance(data['current_amount'], (int, float)) or data['current_amount'] < 0:
         return jsonify({'error': 'Current amount must be a non-negative number'}), 400
-    init_db(request.user_id)
+    initialize_db(request.user_id)
     goal = add_goal(request.user_id, data)
     return jsonify(goal), 201
 
@@ -47,7 +47,7 @@ def update_goal_route(id):
         return jsonify({'error': 'Target amount must be a positive number'}), 400
     if not isinstance(data['current_amount'], (int, float)) or data['current_amount'] < 0:
         return jsonify({'error': 'Current amount must be a non-negative number'}), 400
-    init_db(request.user_id)
+    initialize_db(request.user_id)
     goal = update_goal(request.user_id, id, data)
     if goal:
         return jsonify(goal), 200
@@ -56,7 +56,7 @@ def update_goal_route(id):
 @bp.route('/<int:id>', methods=['DELETE'], endpoint='delete_goal', strict_slashes=False)
 @token_required
 def delete_goal_route(id):
-    init_db(request.user_id)
+    initialize_db(request.user_id)
     if delete_goal(request.user_id, id):
         return jsonify({'message': 'Goal deleted'}), 200
     return jsonify({'error': 'Goal not found'}), 404
@@ -75,7 +75,7 @@ def add_allocation_route(id):
     if 'income_id' in data and not isinstance(data['income_id'], int):
         return jsonify({'error': 'Income ID must be an integer'}), 400
 
-    init_db(request.user_id)
+    initialize_db(request.user_id)
     updated_goal, error = add_allocation(request.user_id, id, data)
     if updated_goal:
         return jsonify(updated_goal), 200
@@ -88,7 +88,7 @@ def get_monthly_allocations_route():
     start_date = params.get('start_date')
     end_date = params.get('end_date')
 
-    init_db(request.user_id)
+    initialize_db(request.user_id)
     monthly_allocations = get_monthly_allocations(request.user_id, start_date, end_date)
     return jsonify(monthly_allocations), 200
 
@@ -100,7 +100,7 @@ def get_allocation_history_route(id):
     end_date = params.get('end_date')
     income_id = int(params.get('income_id')) if params.get('income_id') else None
 
-    init_db(request.user_id)
+    initialize_db(request.user_id)
     allocation_history = get_allocation_history(request.user_id, id, start_date, end_date, income_id)
     if allocation_history is not None:
         return jsonify(allocation_history), 200

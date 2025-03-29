@@ -1,3 +1,4 @@
+// frontend/src/components/AddEditInvestment.js
 import React, { useState, useEffect } from 'react';
 import { useFinance } from '../context/FinanceContext';
 import axios from 'axios';

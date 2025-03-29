@@ -1,6 +1,6 @@
 # main-backend/routes/advisories.py
 from flask import Blueprint, request, jsonify
-from storage.resources import init_db
+from storage.resources import initialize_db
 from storage.advisories import get_advisories_for_user, get_advisories_by_cfa, add_advisory, delete_advisory
 from middleware import token_required, cfa_required, user_or_cfa_required
 
@@ -9,7 +9,7 @@ bp = Blueprint('advisories', __name__)
 @bp.route('/user/<int:user_id>', methods=['GET'], endpoint='get_advisories_for_user')
 @user_or_cfa_required
 def get_advisories_for_user_route(user_id):
-    init_db(user_id)
+    initialize_db(user_id)
     advisories = get_advisories_for_user(user_id)
     return jsonify(advisories), 200
 
@@ -18,7 +18,7 @@ def get_advisories_for_user_route(user_id):
 def get_advisories_by_cfa_route(cfa_id):
     if request.user_id != cfa_id:
         return jsonify({'error': 'CFAs can only access their own advisories'}), 403
-    init_db(0)  # CFAs have global access
+    initialize_db(0)  # CFAs have global access
     advisories = get_advisories_by_cfa(cfa_id)
     return jsonify(advisories), 200
 
@@ -30,7 +30,7 @@ def add_advisory_route(user_id):
     if not all(field in data for field in required_fields):
         return jsonify({'error': 'Missing required fields'}), 400
 
-    init_db(user_id)
+    initialize_db(user_id)
     try:
         advisory = add_advisory(user_id, request.user_id, data)
         return jsonify(advisory), 201
@@ -41,7 +41,7 @@ def add_advisory_route(user_id):
 @token_required
 def delete_advisory_route(advisory_id):
     # Only the user or the CFA who created the advisory can delete it
-    init_db(request.user_id)
+    initialize_db(request.user_id)
     advisory = next((adv for adv in get_advisories_for_user(request.user_id) if adv['id'] == advisory_id), None)
     if not advisory:
         return jsonify({'error': 'Advisory not found'}), 404

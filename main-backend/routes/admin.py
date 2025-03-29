@@ -1,6 +1,6 @@
 # main-backend/routes/admin.py
 from flask import Blueprint, jsonify
-from storage.resources import init_db
+from storage.resources import initialize_db
 from storage.income import get_all_income
 from storage.expenses import get_all_expenses
 from storage.debts import get_all_debts
@@ -17,7 +17,7 @@ bp = Blueprint('admin', __name__)
 @admin_required
 def get_all_users():
     # Since admins have global access, we use a dummy user_id
-    init_db(0)
+    initialize_db(0)
     # This is a simplified approach; in a real system, you'd query the auth-service for user data
     # For now, we'll simulate by accessing financial data for all user_ids
     users = []
@@ -40,7 +40,7 @@ def get_all_users():
 @bp.route('/users/<int:user_id>/financials', methods=['GET'], endpoint='get_user_financials', strict_slashes=False)
 @admin_required
 def get_user_financials(user_id):
-    init_db(user_id)
+    initialize_db(user_id)
     financials = {
         'user_id': user_id,
         'income': get_all_income(user_id),
@@ -57,7 +57,7 @@ def get_user_financials(user_id):
 @bp.route('/users/<int:user_id>/variance/<month>', methods=['GET'], endpoint='get_user_variance', strict_slashes=False)
 @admin_required
 def get_user_variance(user_id, month):
-    init_db(user_id)
+    initialize_db(user_id)
     variance = get_budget_variance(user_id, month)
     if variance:
         return jsonify(variance), 200
