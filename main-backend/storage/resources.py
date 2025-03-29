@@ -71,7 +71,37 @@ def init_db(user_id):
             target_amount REAL NOT NULL,
             current_amount REAL NOT NULL,
             target_date TEXT NOT NULL,
-            allocations TEXT  -- JSON field to store allocation history
+            allocations TEXT
+        )
+        ''',
+        '''
+        CREATE TABLE IF NOT EXISTS budgets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            categories TEXT NOT NULL,
+            total_income REAL NOT NULL DEFAULT 0,
+            total_expenses REAL NOT NULL DEFAULT 0,
+            UNIQUE(user_id)
+        )
+        ''',
+        '''
+        CREATE TABLE IF NOT EXISTS budget_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            budget_id INTEGER NOT NULL,
+            categories TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (budget_id) REFERENCES budgets(id)
+        )
+        ''',
+        '''
+        CREATE TABLE IF NOT EXISTS advisories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            cfa_id INTEGER NOT NULL,
+            advice_type TEXT NOT NULL CHECK(advice_type IN ('product_recommendation', 'investment_diversification', 'debt_restructuring')),
+            details TEXT NOT NULL,  -- JSON: {"recommendation": "Invest in low-risk bonds", "details": "..."}
+            created_at TEXT NOT NULL
         )
         '''
     ]
