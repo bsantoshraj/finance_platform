@@ -1,0 +1,311 @@
+  const fetchAmortizationSchedule = async (debtId, extraPayment = null, interestRate = null, term = null) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = {};
+      if (extraPayment !== null) params.extra_payment = extraPayment;
+      if (interestRate !== null) params.interest_rate = interestRate;
+      if (term !== null) params.term = term;
+
+      const response = await axios.get(`http://localhost:5000/api/debts/${debtId}/amortization`, {
+        headers: { Authorization: `Bearer ${token}` },
+        params,
+      });
+      return response.data.map(entry => ({
+        ...entry,
+        annual_lump_sum: 0, // Initialize annual lump sum column
+        one_time_lump_sum: 0, // Initialize one-time lump sum column
+      }));
+    } catch (err) {
+      const errorMessage = err.response?.data?.error || 'Error fetching amortization schedule';
+      setError(errorMessage);
+      toast.error(errorMessage);
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAmortizeClick = async (event, debtId) => {
+    event.preventDefault(); // Prevent any default navigation behavior
+    const schedule = await fetchAmortizationSchedule(debtId);
+    setAmortizationSchedule(schedule);
+    setAmortizationDebtId(debtId);
+    setWhatIfSchedules({
+      extraEMI: [],
+      lumpSum: [],
+      emiIncrease: [],
+      earlyPayment: [],
+      combined: [],
+    });
+    setWhatIfScenario({
+      extraEMI: 0,
+      lumpSum: 0,
+      emiIncrease: 0,
+      earlyPayment: 0,
+    });
+    setIsAmortizationModalOpen(true);
+  };
+
+  useEffect(() => {
+    if (token) fetchDebts();
+  }, [token, fetchDebts]);
+
+  const openModal = (debt = null) => {
+    setSelectedDebt(debt);
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setSelectedDebt(null);
+    fetchDebts();
+  };
+
+  const closeAmortizationModal = () => {
+    setIsAmortizationModalOpen(false);
+    setAmortizationSchedule([]);
+    setAmortizationDebtId(null);
+    setWhatIfSchedules({
+      extraEMI: [],
+      lumpSum: [],
+      emiIncrease: [],
+      earlyPayment: [],
+      combined: [],
+    });
+  };
+
+  const handleWhatIfScenario = async () => {
+    const debtId = amortizationDebtId;
+
+    // Get the original debt details to calculate the monthly payment
+    const debt = debts.find((d) => d.id === debtId);
+    if (!debt) return;
+
+    const principal = debt.amount;
+    const monthlyRate = debt.interest_rate / 100 / 12;
+    const originalTerm = debt.term;
+    const monthlyPayment = monthlyRate === 0
+      ? principal / originalTerm
+      : principal * (monthlyRate * (1 + monthlyRate) ** originalTerm) / ((1 + monthlyRate) ** originalTerm - 1);
+
+    const extraEMI = parseInt(whatIfScenario.extraEMI) || 0;
+    const lumpSum = parseFloat(whatIfScenario.lumpSum) || 0;
+    const earlyPayment = parseFloat(whatIfScenario.earlyPayment) || 0;
+    const emiIncrease = parseFloat(whatIfScenario.emiIncrease) || 0;
+
+    // Calculate schedules for each scenario independently for "Or" mode
+    const newSchedules = {
+      extraEMI: [],
+      lumpSum: [],
+      emiIncrease: [],
+      earlyPayment: [],
+      combined: [],
+    };
+
+    // Extra EMI scenario
+    if (extraEMI > 0) {
+      const extraPayment = extraEMI * monthlyPayment;
+      let schedule = await fetchAmortizationSchedule(debtId, extraPayment);
+      newSchedules.extraEMI = schedule;
+    }
+
+    // Lump Sum scenario
+    if (lumpSum > 0) {
+      let schedule = await fetchAmortizationSchedule(debtId, lumpSum);
+      // Add lump sum payments every year (every 12 months)
+      for (let i = 0; i < schedule.length; i++) {
+        if (i % 12 === 0 && i !== 0) { // Apply lump sum at the start of each year after the first month
+          schedule[i].annual_lump_sum = lumpSum;
+          schedule[i].payment += lumpSum;
+          schedule[i].principal_payment += lumpSum;
+          let remainingPrincipal = schedule[i].remaining_principal - lumpSum;
+          if (remainingPrincipal < 0) remainingPrincipal = 0;
+          schedule[i].remaining_principal = remainingPrincipal;
+
+          // Recalculate the remaining schedule
+          for (let j = i + 1; j < schedule.length; j++) {
+            if (remainingPrincipal <= 0) {
+              schedule = schedule.slice(0, j);
+              break;
+            }
+            const interestPayment = remainingPrincipal * monthlyRate;
+            const principalPayment = monthlyPayment - interestPayment;
+            remainingPrincipal -= principalPayment;
+            schedule[j].interest_payment = interestPayment;
+            schedule[j].principal_payment = principalPayment;
+            schedule[j].payment = monthlyPayment;
+            schedule[j].remaining_principal = Math.max(remainingPrincipal, 0);
+            schedule[j].total_interest_paid = schedule[j - 1].total_interest_paid + interestPayment;
+            if (j % 12 === 0) {
+              schedule[j].annual_lump_sum = lumpSum;
+            }
+          }
+        }
+      }
+      newSchedules.lumpSum = schedule;
+    }
+
+    // Early Payment scenario
+    if (earlyPayment > 0) {
+      let schedule = await fetchAmortizationSchedule(debtId);
+      if (schedule.length > 0) {
+        schedule[0].one_time_lump_sum = earlyPayment;
+        schedule[0].payment += earlyPayment;
+        schedule[0].principal_payment += earlyPayment;
+        let remainingPrincipal = schedule[0].remaining_principal - earlyPayment;
+        if (remainingPrincipal < 0) remainingPrincipal = 0;
+        schedule[0].remaining_principal = remainingPrincipal;
+
+        for (let i = 1; i < schedule.length; i++) {
+          if (remainingPrincipal <= 0) {
+            schedule = schedule.slice(0, i);
+            break;
+          }
+          const interestPayment = remainingPrincipal * monthlyRate;
+          const principalPayment = monthlyPayment - interestPayment;
+          remainingPrincipal -= principalPayment;
+          schedule[i].interest_payment = interestPayment;
+          schedule[i].principal_payment = principalPayment;
+          schedule[i].payment = monthlyPayment;
+          schedule[i].remaining_principal = Math.max(remainingPrincipal, 0);
+          schedule[i].total_interest_paid = schedule[i - 1].total_interest_paid + interestPayment;
+        }
+
+        newSchedules.earlyPayment = schedule;
+      }
+    }
+
+    // EMI Increase scenario
+    if (emiIncrease > 0) {
+      let schedule = await fetchAmortizationSchedule(debtId);
+      let remainingPrincipal = schedule[0].remaining_principal;
+      let totalInterestPaid = 0;
+      let currentMonthlyPayment = monthlyPayment;
+
+      for (let i = 0; i < schedule.length; i++) {
+        if (i > 0 && i % 12 === 0) {
+          currentMonthlyPayment *= 1 + (emiIncrease / 100);
+        }
+
+        const interestPayment = remainingPrincipal * monthlyRate;
+        const principalPayment = currentMonthlyPayment - interestPayment;
+        remainingPrincipal -= principalPayment;
+        totalInterestPaid += interestPayment;
+
+        if (remainingPrincipal < 0) {
+          schedule[i].principal_payment += remainingPrincipal;
+          schedule[i].payment = schedule[i].principal_payment + interestPayment;
+          remainingPrincipal = 0;
+        } else {
+          schedule[i].principal_payment = principalPayment;
+          schedule[i].payment = currentMonthlyPayment;
+        }
+
+        schedule[i].interest_payment = interestPayment;
+        schedule[i].remaining_principal = Math.max(remainingPrincipal, 0);
+        schedule[i].total_interest_paid = totalInterestPaid;
+
+        if (remainingPrincipal <= 0) {
+          schedule = schedule.slice(0, i + 1);
+          break;
+        }
+      }
+
+      newSchedules.emiIncrease = schedule;
+    }
+
+    // Combined scenario for "And" mode
+    let extraPayment = (extraEMI * monthlyPayment) + lumpSum;
+    let schedule = await fetchAmortizationSchedule(debtId, extraPayment);
+
+    // Apply lump sum payments every year
+    for (let i = 0; i < schedule.length; i++) {
+      if (i % 12 === 0 && i !== 0) {
+        schedule[i].annual_lump_sum = lumpSum;
+      }
+    }
+
+    // Apply early payment
+    if (earlyPayment > 0 && schedule.length > 0) {
+      schedule[0].one_time_lump_sum = earlyPayment;
+      schedule[0].payment += earlyPayment;
+      schedule[0].principal_payment += earlyPayment;
+      let remainingPrincipal = schedule[0].remaining_principal - earlyPayment;
+      if (remainingPrincipal < 0) remainingPrincipal = 0;
+      schedule[0].remaining_principal = remainingPrincipal;
+
+      for (let i = 1; i < schedule.length; i++) {
+        if (remainingPrincipal <= 0) {
+          schedule = schedule.slice(0, i);
+          break;
+        }
+        const interestPayment = remainingPrincipal * monthlyRate;
+        const principalPayment = monthlyPayment - interestPayment + (i % 12 === 0 && i !== 0 ? lumpSum : 0);
+        remainingPrincipal -= principalPayment;
+        schedule[i].interest_payment = interestPayment;
+        schedule[i].principal_payment = principalPayment;
+        schedule[i].payment = monthlyPayment + (i % 12 === 0 && i !== 0 ? lumpSum : 0);
+        schedule[i].remaining_principal = Math.max(remainingPrincipal, 0);
+        schedule[i].total_interest_paid = schedule[i - 1].total_interest_paid + interestPayment;
+        if (i % 12 === 0) {
+          schedule[i].annual_lump_sum = lumpSum;
+        }
+      }
+    }
+
+    // Apply EMI increase
+    if (emiIncrease > 0) {
+      let remainingPrincipal = schedule[0].remaining_principal;
+      let totalInterestPaid = 0;
+      let currentMonthlyPayment = monthlyPayment;
+
+      for (let i = 0; i < schedule.length; i++) {
+        if (i > 0 && i % 12 === 0) {
+          currentMonthlyPayment *= 1 + (emiIncrease / 100);
+        }
+
+        const interestPayment = remainingPrincipal * monthlyRate;
+        const principalPayment = currentMonthlyPayment - interestPayment + (i % 12 === 0 && i !== 0 ? lumpSum : 0);
+        remainingPrincipal -= principalPayment;
+        totalInterestPaid += interestPayment;
+
+        if (remainingPrincipal < 0) {
+          schedule[i].principal_payment += remainingPrincipal;
+          schedule[i].payment = schedule[i].principal_payment + interestPayment;
+          remainingPrincipal = 0;
+        } else {
+          schedule[i].principal_payment = principalPayment;
+          schedule[i].payment = currentMonthlyPayment + (i % 12 === 0 && i !== 0 ? lumpSum : 0);
+        }
+
+        schedule[i].interest_payment = interestPayment;
+        schedule[i].remaining_principal = Math.max(remainingPrincipal, 0);
+        schedule[i].total_interest_paid = totalInterestPaid;
+
+        if (remainingPrincipal <= 0) {
+          schedule = schedule.slice(0, i + 1);
+          break;
+        }
+      }
+    }
+
+    newSchedules.combined = schedule;
+    setWhatIfSchedules(newSchedules);
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setWhatIfScenario((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const toggleScenarioMode = () => {
+    setScenarioMode((prev) => (prev === 'And' ? 'Or' : 'And'));
+    setWhatIfSchedules({
+      extraEMI: [],
+      lumpSum: [],
+      emiIncrease: [],
+      earlyPayment: [],
+      combined: [],
+    });
+  };

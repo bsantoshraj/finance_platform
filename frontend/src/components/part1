@@ -1,0 +1,48 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import axios from 'axios';
+import { toast } from 'react-toastify';
+import { Link } from 'react-router-dom';
+import { useFinance } from '../context/FinanceContext';
+import Modal from 'react-modal';
+import AddEditDebt from './AddEditDebt';
+
+// For graph rendering
+import { Line } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
+
+// Register Chart.js components
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
+
+Modal.setAppElement('#root');
+
+function Debts() {
+  const { token, setLoading, setError, loading, error } = useFinance();
+  const [debts, setDebts] = useState([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedDebt, setSelectedDebt] = useState(null);
+  const [isAmortizationModalOpen, setIsAmortizationModalOpen] = useState(false);
+  const [amortizationSchedule, setAmortizationSchedule] = useState([]);
+  const [amortizationDebtId, setAmortizationDebtId] = useState(null);
+  const [whatIfScenario, setWhatIfScenario] = useState({
+    extraEMI: 0,
+    lumpSum: 0,
+    emiIncrease: 0,
+    earlyPayment: 0,
+  });
+  const [whatIfSchedules, setWhatIfSchedules] = useState({
+    extraEMI: [],
+    lumpSum: [],
+    emiIncrease: [],
+    earlyPayment: [],
+    combined: [],
+  });
+  const [scenarioMode, setScenarioMode] = useState('And'); // 'And' or 'Or'

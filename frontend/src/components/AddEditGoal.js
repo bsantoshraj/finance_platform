@@ -78,19 +78,27 @@ function AddEditGoal({ goal, onClose }) {
       return;
     }
 
-    if (formData.target_amount === '') {
+    if (formData.target_amount === '' || formData.target_amount == null) {
       setError('Target amount is required');
       toast.error('Target amount is required');
       setLoading(false);
-      console.log('Validation failed: Target amount is empty');
+      console.log('Validation failed: Target amount is empty or null');
       return;
     }
+
     const targetAmount = parseFloat(formData.target_amount);
-    if (isNaN(targetAmount) || targetAmount <= 0) {
+    if (isNaN(targetAmount)) {
+      setError('Target amount must be a valid number');
+      toast.error('Target amount must be a valid number');
+      setLoading(false);
+      console.log('Validation failed: Target amount is NaN:', formData.target_amount);
+      return;
+    }
+    if (targetAmount <= 0) {
       setError('Target amount must be a positive number (greater than 0)');
       toast.error('Target amount must be a positive number (greater than 0)');
       setLoading(false);
-      console.log('Validation failed: Target amount is invalid or non-positive:', targetAmount);
+      console.log('Validation failed: Target amount is non-positive:', targetAmount);
       return;
     }
 

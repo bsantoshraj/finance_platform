@@ -1,0 +1,202 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import axios from 'axios';
+import { toast } from 'react-toastify';
+import { Link } from 'react-router-dom';
+import { useFinance } from '../context/FinanceContext';
+import Modal from 'react-modal';
+import AddEditDebt from './AddEditDebt';
+
+Modal.setAppElement('#root');
+
+function Debts() {
+  const { token, setLoading, setError, loading, error } = useFinance();
+  const [debts, setDebts] = useState([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedDebt, setSelectedDebt] = useState(null);
+  const [isAmortizationModalOpen, setIsAmortizationModalOpen] = useState(false);
+  const [amortizationSchedule, setAmortizationSchedule] = useState([]);
+  const [amortizationDebtId, setAmortizationDebtId] = useState(null);
+
+  const fetchDebts = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await axios.get('http://localhost:5000/api/debts', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setDebts(response.data);
+    } catch (err) {
+      const errorMessage = err.response?.data?.error || 'Error fetching debts';
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  }, [token, setLoading, setError]);
+
+  const handleDelete = async (id) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await axios.delete(`http://localhost:5000/api/debts/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setDebts(debts.filter((debt) => debt.id !== id));
+      toast.success('Debt deleted successfully!');
+    } catch (err) {
+      const errorMessage = err.response?.data?.error || 'Error deleting debt';
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchAmortizationSchedule = async (debtId) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await axios.get(`http://localhost:5000/api/debts/${debtId}/amortization`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setAmortizationSchedule(response.data);
+      setAmortizationDebtId(debtId);
+      setIsAmortizationModalOpen(true);
+    } catch (err) {
+      const errorMessage = err.response?.data?.error || 'Error fetching amortization schedule';
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (token) fetchDebts();
+  }, [token, fetchDebts]);
+
+  const openModal = (debt = null) => {
+    setSelectedDebt(debt);
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setSelectedDebt(null);
+    fetchDebts();
+  };
+
+  const closeAmortizationModal = () => {
+    setIsAmortizationModalOpen(false);
+    setAmortizationSchedule([]);
+    setAmortizationDebtId(null);
+  };
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-text">Debts</h1>
+        <button onClick={() => openModal()} className="btn-primary">
+          Add Debt
+        </button>
+      </div>
+      {loading && <p className="text-muted">Loading...</p>}
+      {error && <p className="text-red-500 mb-4">{error}</p>}
+      {debts.length === 0 && !loading && !error && (
+        <p className="text-muted">No debts found. Add a debt to get started!</p>
+      )}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {debts.map((debt) => (
+          <div key={debt.id} className="card">
+            <h2 className="text-xl font-semibold text-text mb-2">{debt.creditor}</h2>
+            <p className="text-muted">Amount: ${debt.amount.toLocaleString()}</p>
+            <p className="text-muted">Interest Rate: {debt.interest_rate}%</p>
+            <p className="text-muted">Term: {debt.term} months</p>
+            <p className="text-muted">Date: {debt.date}</p>
+            <p className="text-muted">Category: {debt.category || 'Other'}</p>
+            <p className="text-muted">Remaining Balance: ${debt.remaining_balance.toLocaleString()}</p>
+            <p className="text-muted">Debt Type: {debt.debt_type}</p>
+            <p className="text-muted">Principal Paid: ${debt.principal_paid.toLocaleString()}</p>
+            <p className="text-muted">Principal Pending: ${debt.principal_pending.toLocaleString()}</p>
+            <p className="text-muted">Interest Paid: ${debt.interest_paid.toLocaleString()}</p>
+            <p className="text-muted">Interest Pending: ${debt.interest_pending.toLocaleString()}</p>
+            <p className="text-muted">Progress: {debt.progress_percentage}%</p>
+            {/* Custom Progress Bar */}
+            <div className="w-full bg-gray-200 rounded-full h-2.5 my-2">
+              <div
+                className="bg-blue-500 h-2.5 rounded-full"
+                style={{ width: `${debt.progress_percentage}%` }}
+              ></div>
+            </div>
+            <div className="mt-4 flex space-x-2">
+              <button onClick={() => openModal(debt)} className="btn-primary">
+                Edit
+              </button>
+              <button onClick={() => handleDelete(debt.id)} className="btn-danger">
+                Delete
+              </button>
+              <button onClick={() => fetchAmortizationSchedule(debt.id)} className="btn-secondary">
+                Amortize
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Modal for Add/Edit Debt */}
+      <Modal
+        isOpen={isModalOpen}
+        onRequestClose={closeModal}
+        className="card max-w-md mx-auto mt-20"
+        overlayClassName="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center"
+      >
+        <AddEditDebt debt={selectedDebt} onClose={closeModal} />
+      </Modal>
+
+      {/* Modal for Amortization Schedule */}
+      <Modal
+        isOpen={isAmortizationModalOpen}
+        onRequestClose={closeAmortizationModal}
+        className="bg-white rounded-lg max-w-4xl w-full mx-auto mt-10 p-6"
+        overlayClassName="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center"
+      >
+        <h2 className="text-2xl font-bold text-text mb-4">
+          Amortization Schedule for Debt ID: {amortizationDebtId}
+        </h2>
+        <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
+          <table className="min-w-full bg-white border">
+            <thead>
+              <tr>
+                <th className="py-2 px-4 border">Month</th>
+                <th className="py-2 px-4 border">Date</th>
+                <th className="py-2 px-4 border">Payment</th>
+                <th className="py-2 px-4 border">Principal Payment</th>
+                <th className="py-2 px-4 border">Interest Payment</th>
+                <th className="py-2 px-4 border">Remaining Principal</th>
+                <th className="py-2 px-4 border">Total Interest Paid</th>
+              </tr>
+            </thead>
+            <tbody>
+              {amortizationSchedule.map((entry, index) => (
+                <tr key={index}>
+                  <td className="py-2 px-4 border">{entry.month}</td>
+                  <td className="py-2 px-4 border">{entry.date}</td>
+                  <td className="py-2 px-4 border">${entry.payment.toLocaleString()}</td>
+                  <td className="py-2 px-4 border">${entry.principal_payment.toLocaleString()}</td>
+                  <td className="py-2 px-4 border">${entry.interest_payment.toLocaleString()}</td>
+                  <td className="py-2 px-4 border">${entry.remaining_principal.toLocaleString()}</td>
+                  <td className="py-2 px-4 border">${entry.total_interest_paid.toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <button onClick={closeAmortizationModal} className="btn-secondary mt-4">
+          Close
+        </button>
+      </Modal>
+    </div>
+  );
+}
+
+export default Debts;

@@ -1,0 +1,207 @@
+# main-backend/storage/debts.py
+import json
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+from utils.db import get_db_connection
+
+def get_all_debts(user_id):
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM debts WHERE user_id = ?', (user_id,))
+    debts = [dict(row) for row in cursor.fetchall()]
+    for debt in debts:
+        # Ensure interest_rate_history is a valid JSON string
+        interest_rate_history = debt.get('interest_rate_history', '[]')
+        if not interest_rate_history or interest_rate_history == '':
+            debt['interest_rate_history'] = '[]'
+        debt['payment_history'] = json.loads(debt.get('payment_history', '[]')) if debt.get('payment_history') and debt.get('payment_history') != '' else []
+        debt['interest_rate_history'] = json.loads(debt['interest_rate_history'])
+        debt['details'] = json.loads(debt.get('details', '{}')) if debt.get('details') and debt.get('details') != '' else {}
+        # Calculate debt metrics
+        metrics = calculate_debt_metrics(
+            principal=debt['amount'],
+            interest_rate=debt['interest_rate'],
+            term=debt['term'],
+            start_date=debt['date']
+        )
+        debt['principal_paid'] = metrics['principal_paid']
+        debt['principal_pending'] = metrics['principal_pending']
+        debt['interest_paid'] = metrics['interest_paid']
+        debt['interest_pending'] = metrics['interest_pending']
+        debt['progress_percentage'] = metrics['progress_percentage']
+        # Update remaining_balance in the database
+        debt['remaining_balance'] = debt['principal_pending']
+        cursor.execute(
+            'UPDATE debts SET remaining_balance = ? WHERE id = ? AND user_id = ?',
+            (debt['remaining_balance'], debt['id'], user_id)
+        )
+    conn.commit()
+    conn.close()
+    return debts
+
+def get_debt_by_id(user_id, debt_id):
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM debts WHERE id = ? AND user_id = ?', (debt_id, user_id))
+    debt = cursor.fetchone()
+    if debt:
+        debt = dict(debt)
+        # Ensure interest_rate_history is a valid JSON string
+        interest_rate_history = debt.get('interest_rate_history', '[]')
+        if not interest_rate_history or interest_rate_history == '':
+            debt['interest_rate_history'] = '[]'
+        debt['payment_history'] = json.loads(debt.get('payment_history', '[]')) if debt.get('payment_history') and debt.get('payment_history') != '' else []
+        debt['interest_rate_history'] = json.loads(debt['interest_rate_history'])
+        debt['details'] = json.loads(debt.get('details', '{}')) if debt.get('details') and debt.get('details') != '' else {}
+        # Calculate debt metrics
+        metrics = calculate_debt_metrics(
+            principal=debt['amount'],
+            interest_rate=debt['interest_rate'],
+            term=debt['term'],
+            start_date=debt['date']
+        )
+        debt['principal_paid'] = metrics['principal_paid']
+        debt['principal_pending'] = metrics['principal_pending']
+        debt['interest_paid'] = metrics['interest_paid']
+        debt['interest_pending'] = metrics['interest_pending']
+        debt['progress_percentage'] = metrics['progress_percentage']
+        # Update remaining_balance in the database
+        debt['remaining_balance'] = debt['principal_pending']
+        cursor.execute(
+            'UPDATE debts SET remaining_balance = ? WHERE id = ? AND user_id = ?',
+            (debt['remaining_balance'], debt_id, user_id)
+        )
+    conn.commit()
+    conn.close()
+    return debt
+
+def add_debt(user_id, data):
+    required_fields = ['amount', 'creditor', 'interest_rate', 'term', 'date', 'debt_type']
+    if not all(field in data for field in required_fields):
+        raise ValueError("Missing required fields")
+
+    if data['debt_type'] not in ['fixed', 'variable']:
+        raise ValueError("Debt type must be 'fixed' or 'variable'")
+    try:
+        amount = float(data['amount'])
+        interest_rate = float(data['interest_rate'])
+        term = int(data['term'])
+        if amount < 0 or interest_rate < 0 or term <= 0:
+            raise ValueError("Amount, interest rate, and term must be positive")
+    except (ValueError, TypeError):
+        raise ValueError("Amount, interest rate, and term must be valid numbers")
+
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute(
+        'INSERT INTO debts (user_id, amount, creditor, interest_rate, term, date, category, debt_type, remaining_balance, payment_history, interest_rate_history, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        (user_id, amount, data['creditor'], interest_rate, term, data['date'], data.get('category', 'Other'), data['debt_type'], amount, json.dumps([]), json.dumps([]), json.dumps({}))
+    )
+    conn.commit()
+    debt_id = cursor.lastrowid
+    cursor.execute('SELECT * FROM debts WHERE id = ?', (debt_id,))
+    debt = dict(cursor.fetchone())
+    debt['payment_history'] = json.loads(debt.get('payment_history', '[]')) if debt.get('payment_history') and debt.get('payment_history') != '' else []
+    debt['interest_rate_history'] = json.loads(debt.get('interest_rate_history', '[]')) if debt.get('interest_rate_history') and debt.get('interest_rate_history') != '' else []
+    debt['details'] = json.loads(debt.get('details', '{}')) if debt.get('details') and debt.get('details') != '' else {}
+    conn.close()
+    return debt
+
+def update_debt(user_id, debt_id, data):
+    required_fields = ['amount', 'creditor', 'interest_rate', 'term', 'date', 'debt_type']
+    if not all(field in data for field in required_fields):
+        raise ValueError("Missing required fields")
+
+    if data['debt_type'] not in ['fixed', 'variable']:
+        raise ValueError("Debt type must be 'fixed' or 'variable'")
+    try:
+        amount = float(data['amount'])
+        interest_rate = float(data['interest_rate'])
+        term = int(data['term'])
+        if amount < 0 or interest_rate < 0 or term <= 0:
+            raise ValueError("Amount, interest rate, and term must be positive")
+    except (ValueError, TypeError):
+        raise ValueError("Amount, interest rate, and term must be valid numbers")
+
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM debts WHERE id = ? AND user_id = ?', (debt_id, user_id))
+    debt = cursor.fetchone()
+    if not debt:
+        conn.close()
+        return None
+
+    debt = dict(debt)
+    cursor.execute(
+        'UPDATE debts SET amount = ?, creditor = ?, interest_rate = ?, term = ?, date = ?, category = ?, debt_type = ?, remaining_balance = ? WHERE id = ? AND user_id = ?',
+        (amount, data['creditor'], interest_rate, term, data['date'], data.get('category', 'Other'), data['debt_type'], amount, debt_id, user_id)
+    )
+    conn.commit()
+    cursor.execute('SELECT * FROM debts WHERE id = ?', (debt_id,))
+    updated_debt = dict(cursor.fetchone())
+    updated_debt['payment_history'] = json.loads(updated_debt.get('payment_history', '[]')) if updated_debt.get('payment_history') and updated_debt.get('payment_history') != '' else []
+    updated_debt['interest_rate_history'] = json.loads(updated_debt.get('interest_rate_history', '[]')) if updated_debt.get('interest_rate_history') and updated_debt.get('interest_rate_history') != '' else []
+    updated_debt['details'] = json.loads(updated_debt.get('details', '{}')) if updated_debt.get('details') and updated_debt.get('details') != '' else {}
+    conn.close()
+    return updated_debt
+
+def add_interest_rate_change(user_id, debt_id, data):
+    required_fields = ['interest_rate', 'date']
+    if not all(field in data for field in required_fields):
+        raise ValueError("Missing required fields")
+
+    try:
+        interest_rate = float(data['interest_rate'])
+        if interest_rate < 0:
+            raise ValueError("Interest rate must be non-negative")
+    except (ValueError, TypeError):
+        raise ValueError("Interest rate must be a valid number")
+
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM debts WHERE id = ? AND user_id = ?', (debt_id, user_id))
+    debt = cursor.fetchone()
+    if not debt:
+        conn.close()
+        return None
+
+    debt = dict(debt)
+    cursor.execute(
+        'UPDATE debts SET interest_rate = ? WHERE id = ? AND user_id = ?',
+        (interest_rate, debt_id, user_id)
+    )
+
+    interest_rate_history = json.loads(debt.get('interest_rate_history', '[]')) if debt.get('interest_rate_history') and debt.get('interest_rate_history') != '' else []
+    interest_rate_history.append({'interest_rate': interest_rate, 'date': data['date']})
+
+    cursor.execute(
+        'UPDATE debts SET interest_rate_history = ? WHERE id = ? AND user_id = ?',
+        (json.dumps(interest_rate_history), debt_id, user_id)
+    )
+    conn.commit()
+
+    cursor.execute('SELECT * FROM debts WHERE id = ?', (debt_id,))
+    updated_debt = dict(cursor.fetchone())
+    updated_debt['payment_history'] = json.loads(updated_debt.get('payment_history', '[]')) if updated_debt.get('payment_history') and updated_debt.get('payment_history') != '' else []
+    updated_debt['interest_rate_history'] = json.loads(updated_debt.get('interest_rate_history', '[]')) if updated_debt.get('interest_rate_history') and updated_debt.get('interest_rate_history') != '' else []
+    updated_debt['details'] = json.loads(updated_debt.get('details', '{}')) if updated_debt.get('details') and updated_debt.get('details') != '' else {}
+    # Recalculate metrics after interest rate change
+    metrics = calculate_debt_metrics(
+        principal=updated_debt['amount'],
+        interest_rate=updated_debt['interest_rate'],
+        term=updated_debt['term'],
+        start_date=updated_debt['date']
+    )
+    updated_debt['principal_paid'] = metrics['principal_paid']
+    updated_debt['principal_pending'] = metrics['principal_pending']
+    updated_debt['interest_paid'] = metrics['interest_paid']
+    updated_debt['interest_pending'] = metrics['interest_pending']
+    updated_debt['progress_percentage'] = metrics['progress_percentage']
+    updated_debt['remaining_balance'] = updated_debt['principal_pending']
+    cursor.execute(
+        'UPDATE debts SET remaining_balance = ? WHERE id = ? AND user_id = ?',
+        (updated_debt['remaining_balance'], debt_id, user_id)
+    )
+    conn.commit()
+    conn.close()
+    return updated_debt

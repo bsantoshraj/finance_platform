@@ -30,9 +30,9 @@ def add_budget_route():
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
 
-@bp.route('/<int:id>', methods=['PUT'], endpoint='update_budget', strict_slashes=False)
+@bp.route('', methods=['PUT'], endpoint='update_budget', strict_slashes=False)
 @token_required
-def update_budget_route(id):
+def update_budget_route():
     data = request.get_json()
     required_fields = ['categories']
     if not all(field in data for field in required_fields):
@@ -40,31 +40,31 @@ def update_budget_route(id):
 
     initialize_db(request.user_id)
     try:
-        budget = update_budget(request.user_id, id, data)
+        budget = update_budget(request.user_id, data)
         if budget:
             return jsonify(budget), 200
         return jsonify({'error': 'Budget not found'}), 404
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
 
-@bp.route('/<int:id>', methods=['DELETE'], endpoint='delete_budget', strict_slashes=False)
+@bp.route('', methods=['DELETE'], endpoint='delete_budget', strict_slashes=False)
 @token_required
-def delete_budget_route(id):
+def delete_budget_route():
     initialize_db(request.user_id)
-    if delete_budget(request.user_id, id):
+    if delete_budget(request.user_id):
         return jsonify({'message': 'Budget deleted'}), 200
     return jsonify({'error': 'Budget not found'}), 404
 
-@bp.route('/<int:id>/history', methods=['GET'], endpoint='get_budget_history', strict_slashes=False)
+@bp.route('/history', methods=['GET'], endpoint='get_budget_history', strict_slashes=False)
 @token_required
-def get_budget_history_route(id):
+def get_budget_history_route():
     initialize_db(request.user_id)
-    history = get_budget_history(request.user_id, id)
+    history = get_budget_history(request.user_id)
     return jsonify(history), 200
 
-@bp.route('/variance/<month>', methods=['GET'], endpoint='get_budget_variance', strict_slashes=False)
+@bp.route('/variance/<month>', methods=['GET'], endpoint='get_variance', strict_slashes=False)
 @token_required
-def get_budget_variance_route(month):
+def get_variance_route(month):
     initialize_db(request.user_id)
     variance = get_budget_variance(request.user_id, month)
     if variance:

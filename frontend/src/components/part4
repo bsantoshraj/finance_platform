@@ -1,0 +1,316 @@
+  // Get the debt for the current amortization schedule
+  const debt = debts.find((d) => d.id === amortizationDebtId) || { amount: 0, interest_rate: 0, interest_rate_history: '[]' };
+
+  // Get the most recent interest rate
+  const interestRateHistory = debt.interest_rate_history ? JSON.parse(debt.interest_rate_history) : [];
+  const mostRecentInterestRate = interestRateHistory.length > 0
+    ? interestRateHistory[interestRateHistory.length - 1].interest_rate
+    : debt.interest_rate;
+
+  // Calculate savings and tenure reduction for "And" mode
+  const originalOutflow = amortizationSchedule.length > 0
+    ? amortizationSchedule[amortizationSchedule.length - 1].total_interest_paid + debt.amount
+    : 0;
+  const combinedOutflow = whatIfSchedules.combined.length > 0
+    ? whatIfSchedules.combined[whatIfSchedules.combined.length - 1].total_interest_paid + debt.amount
+    : originalOutflow;
+  const savings = originalOutflow - combinedOutflow;
+  const originalTenure = amortizationSchedule.length;
+  const reducedTenure = whatIfSchedules.combined.length > 0 ? whatIfSchedules.combined.length : originalTenure;
+  const tenureDifference = originalTenure - reducedTenure;
+
+  // Prepare data for the graph
+  const chartData = {
+    labels: amortizationSchedule.map((entry) => entry.date),
+    datasets: [
+      {
+        label: 'Remaining Principal (Original)',
+        data: amortizationSchedule.map((entry) => entry.remaining_principal),
+        borderColor: 'rgba(75, 192, 192, 1)',
+        fill: false,
+      },
+      ...(scenarioMode === 'Or'
+        ? [
+            ...(whatIfSchedules.extraEMI.length > 0
+              ? [{
+                  label: 'Extra EMI Scenario',
+                  data: whatIfSchedules.extraEMI.map((entry) => entry.remaining_principal),
+                  borderColor: 'rgba(255, 99, 132, 1)',
+                  fill: false,
+                }]
+              : []),
+            ...(whatIfSchedules.lumpSum.length > 0
+              ? [{
+                  label: 'Lump Sum Scenario',
+                  data: whatIfSchedules.lumpSum.map((entry) => entry.remaining_principal),
+                  borderColor: 'rgba(54, 162, 235, 1)',
+                  fill: false,
+                }]
+              : []),
+            ...(whatIfSchedules.emiIncrease.length > 0
+              ? [{
+                  label: 'EMI Increase Scenario',
+                  data: whatIfSchedules.emiIncrease.map((entry) => entry.remaining_principal),
+                  borderColor: 'rgba(255, 206, 86, 1)',
+                  fill: false,
+                }]
+              : []),
+            ...(whatIfSchedules.earlyPayment.length > 0
+              ? [{
+                  label: 'Early Payment Scenario',
+                  data: whatIfSchedules.earlyPayment.map((entry) => entry.remaining_principal),
+                  borderColor: 'rgba(153, 102, 255, 1)',
+                  fill: false,
+                }]
+              : []),
+          ]
+        : whatIfSchedules.combined.length > 0
+          ? [{
+              label: 'Remaining Principal (Combined)',
+              data: whatIfSchedules.combined.map((entry) => entry.remaining_principal),
+              borderColor: 'rgba(255, 99, 132, 1)',
+              fill: false,
+            }]
+          : []),
+    ],
+  };
+
+  const chartOptions = {
+    responsive: true,
+    plugins: {
+      legend: {
+        position: 'top',
+      },
+      title: {
+        display: true,
+        text: 'Amortization Schedule Comparison',
+      },
+    },
+    scales: {
+      x: {
+        title: {
+          display: true,
+          text: 'Date',
+        },
+      },
+      y: {
+        title: {
+          display: true,
+          text: 'Remaining Principal ($)',
+        },
+      },
+    },
+  };
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-text">Debts</h1>
+        <button onClick={() => openModal()} className="btn-primary">
+          Add Debt
+        </button>
+      </div>
+      {loading && <p className="text-muted">Loading...</p>}
+      {error && <p className="text-red-500 mb-4">{error}</p>}
+      {debts.length === 0 && !loading && !error && (
+        <p className="text-muted">No debts found. Add a debt to get started!</p>
+      )}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {debts.map((debt) => (
+          <div key={debt.id} className="card">
+            <h2 className="text-xl font-semibold text-text mb-2">{debt.creditor}</h2>
+            <p className="text-muted">Amount: ${debt.amount.toLocaleString()}</p>
+            <p className="text-muted">Interest Rate: {debt.interest_rate}%</p>
+            <p className="text-muted">Term: {debt.term} months</p>
+            <p className="text-muted">Date: {debt.date}</p>
+            <p className="text-muted">Category: {debt.category || 'Other'}</p>
+            <p className="text-muted">Remaining Balance: ${debt.remaining_balance.toLocaleString()}</p>
+            <p className="text-muted">Debt Type: {debt.debt_type}</p>
+            <p className="text-muted">Principal Paid: ${debt.principal_paid.toLocaleString()}</p>
+            <p className="text-muted">Principal Pending: ${debt.principal_pending.toLocaleString()}</p>
+            <p className="text-muted">Interest Paid: ${debt.interest_paid.toLocaleString()}</p>
+            <p className="text-muted">Interest Pending: ${debt.interest_pending.toLocaleString()}</p>
+            <p className="text-muted">Progress: ${debt.progress_percentage}%</p>
+            {/* Custom Progress Bar */}
+            <div className="w-full bg-gray-200 rounded-full h-2.5 my-2">
+              <div
+                className="bg-blue-500 h-2.5 rounded-full"
+                style={{ width: `${debt.progress_percentage}%` }}
+              ></div>
+            </div>
+            <div className="mt-4 flex space-x-2">
+              <button onClick={() => openModal(debt)} className="btn-primary">
+                Edit
+              </button>
+              <button onClick={() => handleDelete(debt.id)} className="btn-danger">
+                Delete
+              </button>
+              <button onClick={(e) => handleAmortizeClick(e, debt.id)} className="btn-secondary">
+                Amortize
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Modal for Add/Edit Debt */}
+      <Modal
+        isOpen={isModalOpen}
+        onRequestClose={closeModal}
+        className="card max-w-md mx-auto mt-20"
+        overlayClassName="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center"
+      >
+        <AddEditDebt debt={selectedDebt} onClose={closeModal} />
+      </Modal>
+
+      {/* Modal for Amortization Schedule */}
+      <Modal
+        isOpen={isAmortizationModalOpen}
+        onRequestClose={closeAmortizationModal}
+        className="bg-white rounded-lg max-w-4xl w-full mx-auto p-6 max-h-[90vh] overflow-y-auto custom-scrollbar"
+        overlayClassName="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-start mt-10"
+      >
+        <h2 className="text-2xl font-bold text-text mb-4">
+          Amortization Schedule for Debt ID: {amortizationDebtId} (Interest Rate: {mostRecentInterestRate}%)
+        </h2>
+        {/* Savings and Tenure Reduction (And Mode) */}
+        {scenarioMode === 'And' && whatIfSchedules.combined.length > 0 && (
+          <div className="mb-4">
+            <p className="text-muted">
+              Original Tenure: {originalTenure} months, Reduced Tenure: {reducedTenure} months, Difference: {tenureDifference} months
+            </p>
+            <p className="text-muted">
+              Total Savings in Outflow: ${savings.toLocaleString()}
+            </p>
+          </div>
+        )}
+        {/* Toggle Switch for And/Or */}
+        <div className="mb-4 flex items-center">
+          <span className="mr-2 text-muted">Combine Scenarios:</span>
+          <label className="inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={scenarioMode === 'And'}
+              onChange={toggleScenarioMode}
+              className="sr-only peer"
+            />
+            <div className="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+            <span className="ml-2 text-muted">{scenarioMode}</span>
+          </label>
+        </div>
+        {/* What-If Scenarios */}
+        <div className="mb-6">
+          <h3 className="text-lg font-semibold text-text mb-2">What-If Scenarios</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-muted mb-1">Pay N Extra EMI Every Year:</label>
+              <select
+                name="extraEMI"
+                value={whatIfScenario.extraEMI}
+                onChange={handleInputChange}
+                className="input-field w-full"
+              >
+                {[...Array(12).keys()].map((num) => (
+                  <option key={num} value={num}>{num}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-muted mb-1">Lump Sum Amount Every Year ($):</label>
+              <input
+                type="number"
+                name="lumpSum"
+                value={whatIfScenario.lumpSum}
+                onChange={handleInputChange}
+                className="input-field w-full"
+                min="0"
+              />
+            </div>
+            <div>
+              <label className="block text-muted mb-1">Raise EMI by X% Every Year:</label>
+              <input
+                type="number"
+                name="emiIncrease"
+                value={whatIfScenario.emiIncrease}
+                onChange={handleInputChange}
+                className="input-field w-full"
+                min="0"
+                max="100"
+              />
+            </div>
+            <div>
+              <label className="block text-muted mb-1">One-Time Early Principal Payment ($):</label>
+              <input
+                type="number"
+                name="earlyPayment"
+                value={whatIfScenario.earlyPayment}
+                onChange={handleInputChange}
+                className="input-field w-full"
+                min="0"
+              />
+            </div>
+          </div>
+          <button
+            onClick={() => handleWhatIfScenario()}
+            className="btn-primary mt-4"
+          >
+            Apply Scenarios
+          </button>
+        </div>
+        {/* Graph */}
+        <div className="mb-6">
+          <Line data={chartData} options={chartOptions} />
+        </div>
+        {/* Amortization Schedule Table */}
+        <div className="max-h-[400px] overflow-y-scroll custom-scrollbar">
+          <table className="min-w-full bg-white border">
+            <thead>
+              <tr>
+                <th className="py-2 px-4 border">Month</th>
+                <th className="py-2 px-4 border">Date</th>
+                <th className="py-2 px-4 border">Payment</th>
+                <th className="py-2 px-4 border">Principal Payment</th>
+                <th className="py-2 px-4 border">Interest Payment</th>
+                <th className="py-2 px-4 border">Annual Lump Sum</th>
+                <th className="py-2 px-4 border">One-Time Lump Sum</th>
+                <th className="py-2 px-4 border">Remaining Principal</th>
+                <th className="py-2 px-4 border">Total Interest Paid</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(scenarioMode === 'And' && whatIfSchedules.combined.length > 0
+                ? whatIfSchedules.combined
+                : scenarioMode === 'Or' && whatIfSchedules.extraEMI.length > 0
+                  ? whatIfSchedules.extraEMI
+                  : scenarioMode === 'Or' && whatIfSchedules.lumpSum.length > 0
+                    ? whatIfSchedules.lumpSum
+                    : scenarioMode === 'Or' && whatIfSchedules.emiIncrease.length > 0
+                      ? whatIfSchedules.emiIncrease
+                      : scenarioMode === 'Or' && whatIfSchedules.earlyPayment.length > 0
+                        ? whatIfSchedules.earlyPayment
+                        : amortizationSchedule
+              ).map((entry, index) => (
+                <tr key={index}>
+                  <td className="py-2 px-4 border">{entry.month}</td>
+                  <td className="py-2 px-4 border">{entry.date}</td>
+                  <td className="py-2 px-4 border">${entry.payment.toLocaleString()}</td>
+                  <td className="py-2 px-4 border">${entry.principal_payment.toLocaleString()}</td>
+                  <td className="py-2 px-4 border">${entry.interest_payment.toLocaleString()}</td>
+                  <td className="py-2 px-4 border">${entry.annual_lump_sum.toLocaleString()}</td>
+                  <td className="py-2 px-4 border">${entry.one_time_lump_sum.toLocaleString()}</td>
+                  <td className="py-2 px-4 border">${entry.remaining_principal.toLocaleString()}</td>
+                  <td className="py-2 px-4 border">${entry.total_interest_paid.toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <button onClick={closeAmortizationModal} className="btn-secondary mt-4">
+          Close
+        </button>
+      </Modal>
+    </div>
+  );
+}
+
+export default Debts;

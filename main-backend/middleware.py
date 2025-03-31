@@ -1,76 +1,57 @@
 # main-backend/middleware.py
-import jwt
-import os
-import requests
 from functools import wraps
+import jwt
 from flask import request, jsonify
 
-JWT_SECRET = os.getenv('JWT_SECRET', 'your-secret-key')
-
 def token_required(f):
+    print(f"Applying token_required to function: {f}")  # Debug: Log the function
     @wraps(f)
     def decorated(*args, **kwargs):
+        if request.method == 'OPTIONS':
+            return f(*args, **kwargs)
+
         token = None
         if 'Authorization' in request.headers:
-            try:
-                token = request.headers['Authorization'].split()[1]
-            except IndexError:
-                return jsonify({'error': 'Bearer token malformed'}), 401
+            token = request.headers['Authorization'].split(" ")[1]
 
         if not token:
-            return jsonify({'error': 'Authorization token is missing'}), 401
+            return jsonify({'error': 'Token is missing'}), 401
 
         try:
-            response = requests.post('http://localhost:5001/validate-token', headers={'Authorization': f'Bearer {token}'})
-            if response.status_code != 200:
-                return jsonify({'error': 'Invalid or expired token'}), 401
-            data = response.json()
+            data = jwt.decode(token, 'my_secret_key_123', algorithms=["HS256"])
             request.user_id = data['user_id']
-            request.role = data['role']
-            request.status = data['status']
-        except requests.RequestException:
-            return jsonify({'error': 'Unable to validate token'}), 500
+        except Exception as e:
+            print(f"Token validation error: {str(e)}")
+            return jsonify({'error': 'Token is invalid'}), 401
 
-        return f(*args, **kwargs)
-    return decorated
-
-def cfa_required(f):
-    """
-    Decorator to ensure the user is a CFA and has been approved.
-    """
-    @wraps(f)
-    @token_required
-    def decorated(*args, **kwargs):
-        if request.role != 'CFA':
-            return jsonify({'error': 'Access restricted to CFAs'}), 403
-        if request.status != 'approved':
-            return jsonify({'error': 'CFA must be approved to provide services'}), 403
         return f(*args, **kwargs)
     return decorated
 
 def user_or_cfa_required(f):
-    """
-    Decorator to ensure the user is either the owner of the data or an approved CFA.
-    """
+    print(f"Applying user_or_cfa_required to function: {f}")  # Debug: Log the function
+    if f is None:
+        raise ValueError("Function to decorate is None")
     @wraps(f)
-    @token_required
     def decorated(*args, **kwargs):
-        user_id = kwargs.get('user_id')
-        if request.role != 'CFA' and request.user_id != user_id:
-            return jsonify({'error': 'Access restricted to the user or CFAs'}), 403
-        if request.role == 'CFA' and request.status != 'approved':
-            return jsonify({'error': 'CFA must be approved to access user data'}), 403
-        return f(*args, **kwargs)
-    return decorated
+        if request.method == 'OPTIONS':
+            return f(*args, **kwargs)
 
-def admin_required(f):
-    """
-    Decorator to ensure the user is an admin.
-    """
-    @wraps(f)
-    @token_required
-    def decorated(*args, **kwargs):
-        if request.role != 'admin':
-            return jsonify({'error': 'Access restricted to admins'}), 403
+        token = None
+        if 'Authorization' in request.headers:
+            token = request.headers['Authorization'].split(" ")[1]
+
+        if not token:
+            return jsonify({'error': 'Token is missing'}), 401
+
+        try:
+            data = jwt.decode(token, 'my_secret_key_123', algorithms=["HS256"])
+            request.user_id = data['user_id']
+            role = data.get('role', 'user')
+            if role not in ['user', 'cfa']:
+                return jsonify({'error': 'Unauthorized access'}), 403
+        except Exception as e:
+            print(f"Token validation error: {str(e)}")
+            return jsonify({'error': 'Token is invalid'}), 401
+
         return f(*args, **kwargs)
     return decorated

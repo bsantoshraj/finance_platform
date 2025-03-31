@@ -1,0 +1,232 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import axios from 'axios';
+import { toast } from 'react-toastify';
+import { Link } from 'react-router-dom';
+import { useFinance } from '../context/FinanceContext';
+import Modal from 'react-modal';
+
+// For graph rendering
+import { Line } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
+
+// Register Chart.js components
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
+
+import AddEditDebt from './AddEditDebt';
+
+Modal.setAppElement('#root');
+
+function Debts() {
+  const { token, setLoading, setError, loading, error } = useFinance();
+  const [debts, setDebts] = useState([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedDebt, setSelectedDebt] = useState(null);
+  const [isAmortizationModalOpen, setIsAmortizationModalOpen] = useState(false);
+  const [amortizationSchedule, setAmortizationSchedule] = useState([]);
+  const [amortizationDebtId, setAmortizationDebtId] = useState(null);
+  const [whatIfScenario, setWhatIfScenario] = useState({
+    extraEMI: 0,
+    lumpSum: 0,
+    emiIncrease: 0,
+    earlyPayment: 0,
+  });
+  const [whatIfSchedule, setWhatIfSchedule] = useState([]);
+
+  const fetchDebts = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await axios.get('http://localhost:5000/api/debts', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setDebts(response.data);
+    } catch (err) {
+      const errorMessage = err.response?.data?.error || 'Error fetching debts';
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  }, [token, setLoading, setError]);
+
+  const handleDelete = async (id) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await axios.delete(`http://localhost:5000/api/debts/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setDebts(debts.filter((debt) => debt.id !== id));
+      toast.success('Debt deleted successfully!');
+    } catch (err) {
+      const errorMessage = err.response?.data?.error || 'Error deleting debt';
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchAmortizationSchedule = async (debtId, extraPayment = null, interestRate = null, term = null) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = {};
+      if (extraPayment !== null) params.extra_payment = extraPayment;
+      if (interestRate !== null) params.interest_rate = interestRate;
+      if (term !== null) params.term = term;
+
+      const response = await axios.get(`http://localhost:5000/api/debts/${debtId}/amortization`, {
+        headers: { Authorization: `Bearer ${token}` },
+        params,
+      });
+      return response.data;
+    } catch (err) {
+      const errorMessage = err.response?.data?.error || 'Error fetching amortization schedule';
+      setError(errorMessage);
+      toast.error(errorMessage);
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAmortizeClick = async (event, debtId) => {
+    event.preventDefault(); // Prevent any default navigation behavior
+    const schedule = await fetchAmortizationSchedule(debtId);
+    setAmortizationSchedule(schedule);
+    setAmortizationDebtId(debtId);
+    setWhatIfSchedule([]); // Reset what-if schedule
+    setWhatIfScenario({
+      extraEMI: 0,
+      lumpSum: 0,
+      emiIncrease: 0,
+      earlyPayment: 0,
+    });
+    setIsAmortizationModalOpen(true);
+  };
+
+  useEffect(() => {
+    if (token) fetchDebts();
+  }, [token, fetchDebts]);
+
+  const openModal = (debt = null) => {
+    setSelectedDebt(debt);
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setSelectedDebt(null);
+    fetchDebts();
+  };
+
+  const closeAmortizationModal = () => {
+    setIsAmortizationModalOpen(false);
+    setAmortizationSchedule([]);
+    setAmortizationDebtId(null);
+    setWhatIfSchedule([]);
+  };
+
+  const handleWhatIfScenario = async (scenarioType) => {
+    const debtId = amortizationDebtId;
+    let extraPayment = null;
+    let interestRate = null;
+    let term = null;
+
+    // Get the original debt details to calculate the monthly payment
+    const debt = debts.find((d) => d.id === debtId);
+    if (!debt) return;
+
+    const principal = debt.amount;
+    const monthlyRate = debt.interest_rate / 100 / 12;
+    const originalTerm = debt.term;
+    const monthlyPayment = monthlyRate === 0
+      ? principal / originalTerm
+      : principal * (monthlyRate * (1 + monthlyRate) ** originalTerm) / ((1 + monthlyRate) ** originalTerm - 1);
+
+    if (scenarioType === 'extraEMI') {
+      const extraEMI = parseInt(whatIfScenario.extraEMI) || 0;
+      extraPayment = extraEMI * monthlyPayment;
+    } else if (scenarioType === 'lumpSum') {
+      extraPayment = parseFloat(whatIfScenario.lumpSum) || 0;
+    } else if (scenarioType === 'emiIncrease') {
+      // The backend doesn't directly support this, so we'll simulate by adjusting the extra payment
+      extraPayment = 0; // We'll handle this in the graph by adjusting the schedule manually
+    } else if (scenarioType === 'earlyPayment') {
+      extraPayment = parseFloat(whatIfScenario.earlyPayment) || 0;
+    }
+
+    const schedule = await fetchAmortizationSchedule(debtId, extraPayment, interestRate, term);
+    setWhatIfSchedule(schedule);
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setWhatIfScenario((prev) => ({ ...prev, [name]: value }));
+  };
+
+  // Prepare data for the graph
+  const chartData = {
+    labels: amortizationSchedule.map((entry) => entry.date),
+    datasets: [
+      {
+        label: 'Remaining Principal (Original)',
+        data: amortizationSchedule.map((entry) => entry.remaining_principal),
+        borderColor: 'rgba(75, 192, 192, 1)',
+        fill: false,
+      },
+      ...(whatIfSchedule.length > 0
+        ? [
+            {
+              label: 'Remaining Principal (What-If)',
+              data: whatIfSchedule.map((entry) => entry.remaining_principal),
+              borderColor: 'rgba(255, 99, 132, 1)',
+              fill: false,
+            },
+          ]
+        : []),
+    ],
+  };
+
+  const chartOptions = {
+    responsive: true,
+    plugins: {
+      legend: {
+        position: 'top',
+      },
+      title: {
+        display: true,
+        text: 'Amortization Schedule Comparison',
+      },
+    },
+    scales: {
+      x: {
+        title: {
+          display: true,
+          text: 'Date',
+        },
+      },
+      y: {
+        title: {
+          display: true,
+          text: 'Remaining Principal ($)',
+        },
+      },
+    },
+  };
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-text">Debts</h1>
+        <button onClick={() => open

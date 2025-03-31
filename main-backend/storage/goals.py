@@ -20,11 +20,7 @@ def add_goal(user_id, data):
     if not all(field in data for field in required_fields):
         raise ValueError("Missing required fields")
 
-    print(f"Received data: {data}")
-    print(f"Target amount before conversion: {data['target_amount']}, Type: {type(data['target_amount'])}")
-
-    if data['target_amount'] is None or data['target_amount'] == '':
-        raise ValueError("Target amount is required")
+    # Convert target_amount to float and validate
     try:
         target_amount = float(data['target_amount'])
     except (ValueError, TypeError):
@@ -32,8 +28,7 @@ def add_goal(user_id, data):
     if target_amount <= 0:
         raise ValueError("Target amount must be a positive number")
 
-    if data['current_amount'] is None or data['current_amount'] == '':
-        raise ValueError("Current amount is required")
+    # Convert current_amount to float and validate
     try:
         current_amount = float(data['current_amount'])
     except (ValueError, TypeError):
@@ -52,6 +47,18 @@ def add_goal(user_id, data):
     cursor.execute('SELECT * FROM goals WHERE id = ?', (goal_id,))
     goal = dict(cursor.fetchone())
     goal['allocations'] = json.loads(goal['allocations']) if goal['allocations'] else []
+    conn.close()
+    return goal
+
+
+def get_goal_by_id(user_id, goal_id):
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM goals WHERE id = ? AND user_id = ?', (goal_id, user_id))
+    goal = cursor.fetchone()
+    if goal:
+        goal = dict(goal)
+        goal['allocations'] = json.loads(goal['allocations']) if goal['allocations'] else []
     conn.close()
     return goal
 

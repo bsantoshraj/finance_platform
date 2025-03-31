@@ -1,0 +1,144 @@
+# main-backend/storage/goals.py
+from utils.db import get_db_connection
+import json
+from datetime import datetime
+
+def get_all_goals(user_id):
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM goals WHERE user_id = ?', (user_id,))
+    goals = [dict(row) for row in cursor.fetchall()]
+    for goal in goals:
+        goal['allocations'] = json.loads(goal['allocations']) if goal['allocations'] else []
+    conn.close()
+    return goals
+
+def get_goal_by_id(user_id, goal_id):
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM goals WHERE id = ? AND user_id = ?', (goal_id, user_id))
+    goal = cursor.fetchone()
+    if goal:
+        goal = dict(goal)
+        goal['allocations'] = json.loads(goal['allocations']) if goal['allocations'] else []
+    conn.close()
+    return goal
+
+def add_goal(user_id, data):  # Updated to accept user_id and data
+    required_fields = ['name', 'target_amount', 'current_amount', 'target_date']
+    if not all(field in data for field in required_fields):
+        raise ValueError("Missing required fields")
+
+    try:
+        target_amount = float(data['target_amount'])
+        current_amount = float(data['current_amount'])
+        if target_amount < 0 or current_amount < 0:
+            raise ValueError("Target amount and current amount must be non-negative")
+    except (ValueError, TypeError):
+        raise ValueError("Target amount and current amount must be valid numbers")
+
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute(
+        'INSERT INTO goals (user_id, name, target_amount, current_amount, target_date, allocations) VALUES (?, ?, ?, ?, ?, ?)',
+        (user_id, data['name'], target_amount, current_amount, data['target_date'], json.dumps([]))
+    )
+    conn.commit()
+    goal_id = cursor.lastrowid
+    cursor.execute('SELECT * FROM goals WHERE id = ?', (goal_id,))
+    goal = dict(cursor.fetchone())
+    goal['allocations'] = json.loads(goal['allocations']) if goal['allocations'] else []
+    conn.close()
+    return goal
+
+def update_goal(user_id, goal_id, data):
+    required_fields = ['name', 'target_amount', 'current_amount', 'target_date']
+    if not all(field in data for field in required_fields):
+        raise ValueError("Missing required fields")
+
+    try:
+        target_amount = float(data['target_amount'])
+        current_amount = float(data['current_amount'])
+        if target_amount < 0 or current_amount < 0:
+            raise ValueError("Target amount and current amount must be non-negative")
+    except (ValueError, TypeError):
+        raise ValueError("Target amount and current amount must be valid numbers")
+
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM goals WHERE id = ? AND user_id = ?', (goal_id, user_id))
+    goal = cursor.fetchone()
+    if not goal:
+        conn.close()
+        return None
+
+    cursor.execute(
+        'UPDATE goals SET name = ?, target_amount = ?, current_amount = ?, target_date = ? WHERE id = ? AND user_id = ?',
+        (data['name'], target_amount, current_amount, data['target_date'], goal_id, user_id)
+    )
+    conn.commit()
+    cursor.execute('SELECT * FROM goals WHERE id = ?', (goal_id,))
+    updated_goal = dict(cursor.fetchone())
+    updated_goal['allocations'] = json.loads(updated_goal['allocations']) if updated_goal['allocations'] else []
+    conn.close()
+    return updated_goal
+
+def delete_goal(user_id, goal_id):
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM goals WHERE id = ? AND user_id = ?', (goal_id, user_id))
+    success = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return success
+
+def add_allocation(user_id, goal_id, data):
+    required_fields = ['amount', 'date']
+    if not all(field in data for field in required_fields):
+        raise ValueError("Missing required fields")
+
+    try:
+        amount = float(data['amount'])
+        if amount <= 0:
+            raise ValueError("Allocation amount must be positive")
+    except (ValueError, TypeError):
+        raise ValueError("Allocation amount must be a valid number")
+
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM goals WHERE id = ? AND user_id = ?', (goal_id, user_id))
+    goal = cursor.fetchone()
+    if not goal:
+        conn.close()
+        return None
+
+    goal = dict(goal)
+    allocations = json.loads(goal['allocations']) if goal['allocations'] else []
+    allocations.append({'amount': amount, 'date': data['date']})
+    current_amount = float(goal['current_amount']) + amount
+
+    cursor.execute(
+        'UPDATE goals SET current_amount = ?, allocations = ? WHERE id = ? AND user_id = ?',
+        (current_amount, json.dumps(allocations), goal_id, user_id)
+    )
+    conn.commit()
+    cursor.execute('SELECT * FROM goals WHERE id = ?', (goal_id,))
+    updated_goal = dict(cursor.fetchone())
+    updated_goal['allocations'] = json.loads(updated_goal['allocations']) if updated_goal['allocations'] else []
+    conn.close()
+    return updated_goal
+
+def get_monthly_allocations(user_id, goal_id, month):
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM goals WHERE id = ? AND user_id = ?', (goal_id, user_id))
+    goal = cursor.fetchone()
+    if not goal:
+        conn.close()
+        return []
+
+    goal = dict(goal)
+    allocations = json.loads(goal['allocations']) if goal['allocations'] else []
+    monthly_allocations = [allocation for allocation in allocations if allocation['date'].startswith(month)]
+    conn.close()
+    return monthly_allocations

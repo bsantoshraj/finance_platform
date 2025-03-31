@@ -1,0 +1,88 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import axios from 'axios';
+import { toast } from 'react-toastify';
+import { Link } from 'react-router-dom';
+import { useFinance } from '../context/FinanceContext';
+
+function Debts() {
+  const { token, setLoading, setError, loading, error } = useFinance();
+  const [debts, setDebts] = useState([]);
+
+  const fetchDebts = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await axios.get('http://localhost:5000/api/debts', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setDebts(response.data);
+    } catch (err) {
+      const errorMessage = err.response?.data?.error || 'Error fetching debts';
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  }, [token, setLoading, setError]);
+
+  const handleDelete = async (id) => {
+    try {
+      await axios.delete(`http://localhost:5000/api/debts/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setDebts(debts.filter((debt) => debt.id !== id));
+      toast.success('Debt deleted successfully!');
+    } catch (err) {
+      const errorMessage = err.response?.data?.error || 'Error deleting debt';
+      toast.error(errorMessage);
+    }
+  };
+
+  useEffect(() => {
+    if (token) fetchDebts();
+  }, [token, fetchDebts]);
+
+  if (loading) return <p className="text-muted">Loading...</p>;
+  if (error) return <p className="text-red-500">{error}</p>;
+
+  return (
+    <div>
+      <h1 className="text-3xl font-bold text-text mb-6">Debts</h1>
+      {debts.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {debts.map((debt) => (
+            <div key={debt.id} className="card">
+              <h3 className="text-lg font-semibold text-text">{debt.creditor}</h3>
+              <p className="text-muted">Amount: ${debt.amount.toLocaleString()}</p>
+              <p className="text-muted">Interest Rate: {debt.interest_rate}%</p>
+              <p className="text-muted">Term: {debt.term} months</p>
+              <p className="text-muted">Start Date: {debt.date}</p>
+              <p className="text-muted">Category: {debt.category || 'Other'}</p>
+              <p className="text-muted">Debt Type: {debt.debt_type}</p>
+              <p className="text-muted">Principal Paid: ${debt.principal_paid.toLocaleString()}</p>
+              <p className="text-muted">Principal Pending: ${debt.principal_pending.toLocaleString()}</p>
+              <p className="text-muted">Interest Paid: ${debt.interest_paid.toLocaleString()}</p>
+              <p className="text-muted">Interest Pending: ${debt.interest_pending.toLocaleString()}</p>
+              <p className="text-muted">Progress: {debt.progress_percentage}%</p>
+              {/* Custom Progress Bar */}
+              <div className="w-full bg-gray-200 rounded-full h-2.5 my-2">
+                <div
+                  className="bg-blue-500 h-2.5 rounded-full"
+                  style={{ width: `${debt.progress_percentage}%` }}
+                ></div>
+              </div>
+              <div className="flex space-x-2 mt-2">
+                <Link to={`/debts/${debt.id}`} className="text-blue-500 hover:underline">View Details</Link>
+                <button onClick={() => handleDelete(debt.id)} className="text-red-500 hover:underline">Delete</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-muted">No debts found. Add a debt to get started!</p>
+      )}
+    </div>
+  );
+}
+
+export default Debts;
