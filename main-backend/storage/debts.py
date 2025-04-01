@@ -48,6 +48,7 @@ def get_all_debts(user_id):
     conn.close()
     return debts
 
+
 def calculate_debt_metrics(principal, interest_rate, term, start_date):
     principal = float(principal)
     interest_rate = float(interest_rate) / 100
@@ -99,6 +100,7 @@ def calculate_debt_metrics(principal, interest_rate, term, start_date):
         'progress_percentage': round(progress_percentage, 2),
     }
 
+
 def get_debt_by_id(user_id, debt_id):
     conn = get_db_connection(user_id)
     cursor = conn.cursor()
@@ -144,6 +146,7 @@ def get_debt_by_id(user_id, debt_id):
     conn.close()
     return debt
 
+
 def add_debt(user_id, data):
     required_fields = ['amount', 'creditor', 'interest_rate', 'term', 'date', 'debt_type']
     if not all(field in data for field in required_fields):
@@ -163,7 +166,7 @@ def add_debt(user_id, data):
     conn = get_db_connection(user_id)
     cursor = conn.cursor()
     cursor.execute(
-        'INSERT INTO debts (user_id, amount, creditor, interest_rate, term, date, category, debt_type, remaining_balance, payment_history, interest_rate_history, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO debts (user_id, amount, creditor, interest_rate, term, date, category, debt_type, remaining_balance, payment_history, interest_rate_history, details) VALUES (_, _, _, _, _, _, _, _, _, _, _, _)',
         (user_id, amount, data['creditor'], interest_rate, term, data['date'], data.get('category', 'Other'), data['debt_type'], amount, json.dumps([]), json.dumps([]), json.dumps({}))
     )
     conn.commit()
@@ -288,6 +291,7 @@ def add_payment(user_id, debt_id, data):
     conn.close()
     return updated_debt
 
+
 def add_interest_rate_change(user_id, debt_id, data):
     required_fields = ['interest_rate', 'date']
     if not all(field in data for field in required_fields):
@@ -406,7 +410,6 @@ def get_amortization_schedule(user_id, debt_id, extra_payment=None, interest_rat
         total_payment = monthly_payment + extra_payment
 
         while payment_idx < len(payments) and payments[payment_idx]['date'] <= payment_date_str:
-            extra_payment += float(payments[payment_idx]['amount'])
             total_payment += float(payments[payment_idx]['amount'])
             principal_payment += float(payments[payment_idx]['amount'])
             payment_idx += 1
@@ -435,3 +438,6 @@ def get_amortization_schedule(user_id, debt_id, extra_payment=None, interest_rat
 
     conn.close()
     return schedule
+
+
+
