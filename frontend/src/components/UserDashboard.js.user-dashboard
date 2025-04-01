@@ -1,0 +1,240 @@
+// frontend/src/components/UserDashboard.js
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import { toast } from 'react-toastify';
+import { useFinance } from '../context/FinanceContext';
+
+function UserDashboard() {
+  const { token } = useFinance();
+  const [debts, setDebts] = useState([]);
+  const [incomes, setIncomes] = useState([]);
+  const [expenses, setExpenses] = useState([]);
+  const [goals, setGoals] = useState([]);
+  const [contingencyFund, setContingencyFund] = useState(null);
+  const [consolidatedEMI, setConsolidatedEMI] = useState(0);
+  const [totalDebt, setTotalDebt] = useState(0);
+  const [monthlyIncome, setMonthlyIncome] = useState(0);
+  const [monthlyExpenses, setMonthlyExpenses] = useState(0);
+  const [monthlyGoalContribution, setMonthlyGoalContribution] = useState(0);
+  const [monthlyContingencyAllocation, setMonthlyContingencyAllocation] = useState(0);
+  const [monthlySavings, setMonthlySavings] = useState(0);
+  const [newAllocation, setNewAllocation] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Fetch all data on component mount
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!token) return;
+
+      setLoading(true);
+      setError(null);
+      try {
+        // Fetch debts
+        const debtsResponse = await axios.get('http://localhost:5000/api/debts', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setDebts(debtsResponse.data);
+
+        // Fetch consolidated EMI
+        const emiResponse = await axios.get('http://localhost:5000/api/debts/consolidated-emi', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setConsolidatedEMI(emiResponse.data.consolidated_emi);
+
+        // Fetch total debt
+        const debtResponse = await axios.get('http://localhost:5000/api/debts/total-debt', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setTotalDebt(debtResponse.data.total_debt);
+
+        // Fetch incomes
+        const incomesResponse = await axios.get('http://localhost:5000/api/income', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setIncomes(incomesResponse.data);
+
+        // Fetch monthly income
+        const monthlyIncomeResponse = await axios.get('http://localhost:5000/api/income/monthly-total', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setMonthlyIncome(monthlyIncomeResponse.data.monthly_income);
+
+        // Fetch expenses
+        const expensesResponse = await axios.get('http://localhost:5000/api/expense', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setExpenses(expensesResponse.data);
+
+        // Fetch monthly expenses
+        const monthlyExpensesResponse = await axios.get('http://localhost:5000/api/expense/monthly-total', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setMonthlyExpenses(monthlyExpensesResponse.data.monthly_expenses);
+
+        // Fetch goals
+        const goalsResponse = await axios.get('http://localhost:5000/api/goals', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setGoals(goalsResponse.data);
+
+        // Fetch monthly goal contribution
+        const goalContributionResponse = await axios.get('http://localhost:5000/api/goals/monthly-contribution', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setMonthlyGoalContribution(goalContributionResponse.data.monthly_contribution);
+
+        // Fetch contingency fund
+        const contingencyResponse = await axios.get('http://localhost:5000/api/contingency', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setContingencyFund(contingencyResponse.data);
+
+        // Fetch monthly contingency allocation
+        const contingencyAllocationResponse = await axios.get('http://localhost:5000/api/contingency/monthly-allocation', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setMonthlyContingencyAllocation(contingencyAllocationResponse.data.monthly_allocation);
+
+        // Fetch monthly savings
+        const savingsResponse = await axios.get('http://localhost:5000/api/savings/monthly', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setMonthlySavings(savingsResponse.data.monthly_savings);
+      } catch (err) {
+        const errorMessage = err.response?.data?.error || 'Error fetching dashboard data';
+        setError(errorMessage);
+        toast.error(errorMessage);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [token]);
+
+//part2 - contingency fund and rendering UI
+
+  const handleSetAllocation = async () => {
+    if (!newAllocation || isNaN(newAllocation) || parseFloat(newAllocation) < 0) {
+      toast.error('Please enter a valid non-negative allocation amount');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await axios.post(
+        'http://localhost:5000/api/contingency/set-allocation',
+        { monthly_allocation: parseFloat(newAllocation) },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setContingencyFund(response.data);
+      setMonthlyContingencyAllocation(response.data.monthly_allocation);
+      // Recalculate savings after updating allocation
+      const savingsResponse = await axios.get('http://localhost:5000/api/savings/monthly', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setMonthlySavings(savingsResponse.data.monthly_savings);
+      setNewAllocation('');
+      toast.success('Monthly allocation updated successfully!');
+    } catch (err) {
+      const errorMessage = err.response?.data?.error || 'Error setting allocation';
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-6">
+      <h1 className="text-3xl font-bold text-text mb-6">User Dashboard</h1>
+      {loading && <p className="text-muted">Loading...</p>}
+      {error && <p className="text-red-500 mb-4">{error}</p>}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Debt Section */}
+        <div className="card">
+          <h2 className="text-xl font-semibold text-text mb-2">Debt</h2>
+          <p className="text-2xl font-bold text-text">
+            EMI: ${consolidatedEMI.toLocaleString()}
+          </p>
+          <p className="text-sm text-muted">
+            Total Debt: ${totalDebt.toLocaleString()}
+          </p>
+        </div>
+
+        {/* Contingency Fund Section */}
+        <div className="card">
+          <h2 className="text-xl font-semibold text-text mb-2">Contingency Fund</h2>
+          {contingencyFund ? (
+            <>
+              <p className="text-lg text-text">
+                Balance: ${contingencyFund.balance.toLocaleString()}
+              </p>
+              <p className="text-sm text-muted">
+                Monthly Allocation: ${contingencyFund.monthly_allocation.toLocaleString()}
+              </p>
+            </>
+          ) : (
+            <p className="text-muted">No contingency fund set up.</p>
+          )}
+          <div className="mt-4">
+            <input
+              type="number"
+              value={newAllocation}
+              onChange={(e) => setNewAllocation(e.target.value)}
+              placeholder="Set monthly allocation ($)"
+              className="input-field w-full mb-2"
+              min="0"
+            />
+            <button
+              onClick={handleSetAllocation}
+              className="btn-primary w-full"
+              disabled={loading}
+            >
+              {loading ? 'Setting...' : 'Set Allocation'}
+            </button>
+          </div>
+        </div>
+
+        {/* Expenses Section */}
+        <div className="card">
+          <h2 className="text-xl font-semibold text-text mb-2">Expenses</h2>
+          <p className="text-lg text-text">
+            Total Expenses: ${monthlyExpenses.toLocaleString()}
+          </p>
+          <p className="text-sm text-muted">
+            Remaining After Deductions: $
+            {(monthlyIncome - monthlyExpenses - consolidatedEMI - monthlyGoalContribution - monthlyContingencyAllocation).toLocaleString()}
+          </p>
+        </div>
+
+        {/* Savings Section */}
+        <div className="card">
+          <h2 className="text-xl font-semibold text-text mb-2">Savings</h2>
+          <p className="text-lg text-text">
+            Total Monthly Savings: ${monthlySavings.toLocaleString()}
+          </p>
+        </div>
+
+        {/* Other Sections (Placeholder) */}
+        <div className="card">
+          <h2 className="text-xl font-semibold text-text mb-2">Incomes</h2>
+          <p className="text-lg text-text">
+            Total Monthly Income: ${monthlyIncome.toLocaleString()}
+          </p>
+        </div>
+
+        <div className="card">
+          <h2 className="text-xl font-semibold text-text mb-2">Goals</h2>
+          <p className="text-lg text-text">
+            Monthly Contribution: ${monthlyGoalContribution.toLocaleString()}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default UserDashboard;
