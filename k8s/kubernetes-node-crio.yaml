@@ -1,0 +1,134 @@
+---
+- name: Install Kubernetes Worker Node with CRI-O
+  hosts: k8s_nodes
+  become: true
+  vars:
+    kubernetes_version: "1.31.1" # Latest stable as of April 2025
+    crio_version: "1.31"       # Matches Kubernetes version
+
+  tasks:
+    - name: Ensure required kernel modules are loaded
+      ansible.builtin.command: modprobe {{ item }}
+      loop:
+        - overlay
+        - br_netfilter
+      changed_when: false
+
+    - name: Configure sysctl for Kubernetes
+      ansible.builtin.copy:
+        content: |
+          net.bridge.bridge-nf-call-iptables = 1
+          net.ipv4.ip_forward = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+        dest: /etc/sysctl.d/99-kubernetes-cri.conf
+        mode: '0644'
+      notify: Reload sysctl
+
+    - name: Disable swap
+      ansible.builtin.command: swapoff -a
+      changed_when: true
+
+    - name: Comment out swap in fstab
+      ansible.builtin.replace:
+        path: /etc/fstab
+        regexp: '^([^#].*?\sswap\s+.*)$'
+        replace: '#\1'
+
+    - name: Add CRI-O repository key (Ubuntu)
+      ansible.builtin.apt_key:
+        url: https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_22.04/Release.key
+        state: present
+      when: ansible_distribution == "Ubuntu"
+
+    - name: Add CRI-O repository (Ubuntu)
+      ansible.builtin.apt_repository:
+        repo: deb http://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/{{ crio_version }}/xUbuntu_22.04/ /
+        state: present
+        filename: crio
+      when: ansible_distribution == "Ubuntu"
+
+    - name: Install CRI-O and dependencies
+      ansible.builtin.apt:
+        name:
+          - cri-o
+          - cri-o-runc
+          - cri-tools
+        state: present
+        update_cache: yes
+      when: ansible_distribution == "Ubuntu"
+
+    - name: Configure CRI-O storage driver
+      ansible.builtin.lineinfile:
+        path: /etc/crio/crio.conf
+        regexp: '^storage_driver ='
+        line: 'storage_driver = "overlay2"'
+        state: present
+
+    - name: Enable and start CRI-O
+      ansible.builtin.systemd:
+        name: crio
+        state: started
+        enabled: yes
+        daemon_reload: yes
+
+    - name: Add Kubernetes apt key
+      ansible.builtin.apt_key:
+        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+        state: present
+
+    - name: Add Kubernetes repository
+      ansible.builtin.apt_repository:
+        repo: deb http://apt.kubernetes.io/ kubernetes-xenial main
+        state: present
+        filename: kubernetes
+
+    - name: Install Kubernetes components
+      ansible.builtin.apt:
+        name:
+          - kubelet={{ kubernetes_version }}-00
+          - kubeadm={{ kubernetes_version }}-00
+        state: present
+        update_cache: yes
+
+    - name: Hold Kubernetes packages
+      ansible.builtin.dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop:
+        - kubelet
+        - kubeadm
+
+    - name: Configure kubelet to use CRI-O
+      ansible.builtin.copy:
+        content: |
+          [Service]
+          Environment="KUBELET_EXTRA_ARGS=--container-runtime=remote --container-runtime-endpoint=unix:///var/run/crio/crio.sock"
+        dest: /etc/systemd/system/kubelet.service.d/10-crio.conf
+        mode: '0644'
+      notify: Reload systemd
+
+    - name: Join node to Kubernetes cluster
+      ansible.builtin.command: "{{ join_command }}"
+      vars:
+        join_command: "{{ hostvars[groups['k8s_master'][0]]['kubeadm_init']['stdout'] | regex_search('kubeadm join.*--token.*') }}"
+      when: join_command is defined
+      changed_when: true
+
+    - name: Log setup details for AI monitoring
+      ansible.builtin.copy:
+        content: |
+          Kubernetes Version: {{ kubernetes_version }}
+          CRI-O Version: {{ crio_version }}
+          Node Join Timestamp: {{ ansible_date_time.iso8601 }}
+        dest: /var/log/k8s_node_setup.log
+        mode: '0644'
+
+  handlers:
+    - name: Reload sysctl
+      ansible.builtin.command: sysctl --system
+      changed_when: true
+
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: yes
+      changed_when: true

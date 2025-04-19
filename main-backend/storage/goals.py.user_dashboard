@@ -1,0 +1,174 @@
+# main-backend/storage/goals.py
+import json
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+from utils.db import get_db_connection
+
+def get_all_goals(user_id):
+    """
+    Retrieve all financial goals for a user.
+    
+    Args:
+        user_id (int): The ID of the user.
+    
+    Returns:
+        list: A list of goals for the user.
+    """
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM goals WHERE user_id = ?', (user_id,))
+    goals = [dict(row) for row in cursor.fetchall()]
+    for goal in goals:
+        goal['details'] = json.loads(goal['details']) if goal['details'] and goal['details'] != '' else {}
+    conn.close()
+    return goals
+
+def get_goal_by_id(user_id, goal_id):
+    """
+    Retrieve a specific goal by its ID for a user.
+    
+    Args:
+        user_id (int): The ID of the user.
+        goal_id (int): The ID of the goal.
+    
+    Returns:
+        dict: The goal details, or None if not found.
+    """
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM goals WHERE id = ? AND user_id = ?', (goal_id, user_id))
+    goal = cursor.fetchone()
+    if goal:
+        goal = dict(goal)
+        goal['details'] = json.loads(goal['details']) if goal['details'] and goal['details'] != '' else {}
+    conn.close()
+    return goal
+
+def add_goal(user_id, data):
+    """
+    Add a new financial goal for a user.
+    
+    Args:
+        user_id (int): The ID of the user.
+        data (dict): The goal data (name, target_amount, current_amount, target_date, details).
+    
+    Returns:
+        dict: The added goal.
+    """
+    required_fields = ['name', 'target_amount', 'target_date']
+    if not all(field in data for field in required_fields):
+        raise ValueError("Missing required fields")
+
+    try:
+        target_amount = float(data['target_amount'])
+        current_amount = float(data.get('current_amount', 0))
+        if target_amount <= 0 or current_amount < 0:
+            raise ValueError("Target amount must be positive, and current amount cannot be negative")
+    except (ValueError, TypeError):
+        raise ValueError("Target amount and current amount must be valid numbers")
+
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute(
+        'INSERT INTO goals (user_id, name, target_amount, current_amount, target_date, details) VALUES (?, ?, ?, ?, ?, ?)',
+        (user_id, data['name'], target_amount, current_amount, data['target_date'], json.dumps(data.get('details', {})))
+    )
+    conn.commit()
+    goal_id = cursor.lastrowid
+    cursor.execute('SELECT * FROM goals WHERE id = ?', (goal_id,))
+    goal = dict(cursor.fetchone())
+    goal['details'] = json.loads(goal['details']) if goal['details'] and goal['details'] != '' else {}
+    conn.close()
+    return goal
+
+def update_goal(user_id, goal_id, data):
+    """
+    Update an existing financial goal for a user.
+    
+    Args:
+        user_id (int): The ID of the user.
+        goal_id (int): The ID of the goal.
+        data (dict): The updated goal data.
+    
+    Returns:
+        dict: The updated goal, or None if not found.
+    """
+    required_fields = ['name', 'target_amount', 'current_amount', 'target_date']
+    if not all(field in data for field in required_fields):
+        raise ValueError("Missing required fields")
+
+    try:
+        target_amount = float(data['target_amount'])
+        current_amount = float(data['current_amount'])
+        if target_amount <= 0 or current_amount < 0:
+            raise ValueError("Target amount must be positive, and current amount cannot be negative")
+    except (ValueError, TypeError):
+        raise ValueError("Target amount and current amount must be valid numbers")
+
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM goals WHERE id = ? AND user_id = ?', (goal_id, user_id))
+    goal = cursor.fetchone()
+    if not goal:
+        conn.close()
+        return None
+
+    cursor.execute(
+        'UPDATE goals SET name = ?, target_amount = ?, current_amount = ?, target_date = ?, details = ? WHERE id = ? AND user_id = ?',
+        (data['name'], target_amount, current_amount, data['target_date'], json.dumps(data.get('details', {})), goal_id, user_id)
+    )
+    conn.commit()
+    cursor.execute('SELECT * FROM goals WHERE id = ?', (goal_id,))
+    updated_goal = dict(cursor.fetchone())
+    updated_goal['details'] = json.loads(updated_goal['details']) if updated_goal['details'] and updated_goal['details'] != '' else {}
+    conn.close()
+    return updated_goal
+
+def delete_goal(user_id, goal_id):
+    """
+    Delete a financial goal for a user.
+    
+    Args:
+        user_id (int): The ID of the user.
+        goal_id (int): The ID of the goal.
+    
+    Returns:
+        bool: True if the goal was deleted, False otherwise.
+    """
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM goals WHERE id = ? AND user_id = ?', (goal_id, user_id))
+    success = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return success
+
+
+def calculate_monthly_goal_contribution(user_id):
+    """
+    Calculate the total monthly contribution towards all goals for a user.
+    
+    Args:
+        user_id (int): The ID of the user.
+    
+    Returns:
+        float: The total monthly contribution towards all goals.
+    """
+    goals = get_all_goals(user_id)
+    total_monthly_contribution = 0.0
+    current_date = datetime.now()
+
+    for goal in goals:
+        target_date = datetime.strptime(goal['target_date'], '%Y-%m-%d')
+        # Calculate remaining months until the target date
+        remaining_months = (target_date.year - current_date.year) * 12 + target_date.month - current_date.month
+        remaining_months = max(1, remaining_months)  # Ensure at least 1 month to avoid division by zero
+
+        # Calculate the remaining amount needed to reach the goal
+        remaining_amount = max(0, goal['target_amount'] - goal['current_amount'])
+
+        # Calculate the monthly contribution needed to reach the goal by the target date
+        monthly_contribution = remaining_amount / remaining_months
+        total_monthly_contribution += monthly_contribution
+
+    return round(total_monthly_contribution, 2)

@@ -1,0 +1,126 @@
+# main-backend/routes/expense.py
+from flask import Blueprint, jsonify, request
+from storage.expense import (
+    get_all_expenses,
+    get_expense_by_id,
+    add_expense,
+    update_expense,
+    delete_expense
+)
+from storage.resources import initialize_db
+from utils.auth import token_required
+
+bp = Blueprint('expense', __name__, url_prefix='/api/expense')
+
+@bp.route('', methods=['GET'])
+@token_required
+def get_expenses():
+    """
+    Get all expense entries for the user.
+    
+    Returns:
+        JSON: A list of expense entries.
+    """
+    initialize_db(request.user_id)
+    expenses = get_all_expenses(request.user_id)
+    return jsonify(expenses), 200
+
+@bp.route('/<int:id>', methods=['GET'])
+@token_required
+def get_single_expense(id):
+    """
+    Get a specific expense entry by its ID.
+    
+    Args:
+        id (int): The ID of the expense entry.
+    
+    Returns:
+        JSON: The expense details, or an error if not found.
+    """
+    initialize_db(request.user_id)
+    expense = get_expense_by_id(request.user_id, id)
+    if expense:
+        return jsonify(expense), 200
+    return jsonify({'error': 'Expense not found'}), 404
+
+@bp.route('', methods=['POST'])
+@token_required
+def create_expense():
+    """
+    Create a new expense entry for the user.
+    
+    Body:
+        JSON: Expense data (amount, category, date, etc.).
+    
+    Returns:
+        JSON: The created expense entry, or an error if invalid.
+    """
+    initialize_db(request.user_id)
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    try:
+        expense = add_expense(request.user_id, data)
+        return jsonify(expense), 201
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+@bp.route('/<int:id>', methods=['PUT'])
+@token_required
+def update_expense_route(id):
+    """
+    Update an existing expense entry.
+    
+    Args:
+        id (int): The ID of the expense entry.
+    
+    Body:
+        JSON: Updated expense data.
+    
+    Returns:
+        JSON: The updated expense entry, or an error if not found.
+    """
+    initialize_db(request.user_id)
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    try:
+        expense = update_expense(request.user_id, id, data)
+        if expense:
+            return jsonify(expense), 200
+        return jsonify({'error': 'Expense not found'}), 404
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+@bp.route('/<int:id>', methods=['DELETE'])
+@token_required
+def delete_expense_route(id):
+    """
+    Delete an expense entry.
+    
+    Args:
+        id (int): The ID of the expense entry.
+    
+    Returns:
+        JSON: Success message, or an error if not found.
+    """
+    initialize_db(request.user_id)
+    if delete_expense(request.user_id, id):
+        return jsonify({'message': 'Expense deleted'}), 200
+    return jsonify({'error': 'Expense not found'}), 404
+
+@bp.route('/monthly-total', methods=['GET'])
+@token_required
+def get_monthly_expenses():
+    """
+    Get the total monthly expenses for the user.
+    
+    Returns:
+        JSON: The total monthly expenses.
+    """
+    initialize_db(request.user_id)
+    try:
+        monthly_expenses = calculate_monthly_expenses(request.user_id)
+        return jsonify({'monthly_expenses': monthly_expenses}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

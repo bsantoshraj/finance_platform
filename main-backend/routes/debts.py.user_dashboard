@@ -1,0 +1,143 @@
+# main-backend/routes/debts.py
+from flask import Blueprint, jsonify, request
+from storage.debts import (
+    get_all_debts,
+    get_debt_by_id,
+    add_debt,
+    update_debt,
+    delete_debt,
+    add_payment,
+    add_interest_rate_change,
+    get_amortization_schedule
+)
+from storage.resources import initialize_db
+from utils.auth import token_required
+
+bp = Blueprint('debts', __name__, url_prefix='/api/debts')
+
+@bp.route('', methods=['GET'])
+@token_required
+def get_debts():
+    initialize_db(request.user_id)
+    debts = get_all_debts(request.user_id)
+    return jsonify(debts), 200
+
+@bp.route('/<int:id>', methods=['GET'])
+@token_required
+def get_debt(id):
+    initialize_db(request.user_id)
+    debt = get_debt_by_id(request.user_id, id)
+    if debt:
+        return jsonify(debt), 200
+    return jsonify({'error': 'Debt not found'}), 404
+
+@bp.route('', methods=['POST'])
+@token_required
+def create_debt():
+    initialize_db(request.user_id)
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    try:
+        debt = add_debt(request.user_id, data)
+        return jsonify(debt), 201
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+@bp.route('/<int:id>', methods=['PUT'])
+@token_required
+def update_debt_route(id):
+    initialize_db(request.user_id)
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    try:
+        debt = update_debt(request.user_id, id, data)
+        if debt:
+            return jsonify(debt), 200
+        return jsonify({'error': 'Debt not found'}), 404
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+@bp.route('/<int:id>', methods=['DELETE'])
+@token_required
+def delete_debt_route(id):
+    initialize_db(request.user_id)
+    if delete_debt(request.user_id, id):
+        return jsonify({'message': 'Debt deleted'}), 200
+    return jsonify({'error': 'Debt not found'}), 404
+
+@bp.route('/<int:id>/payment', methods=['POST'])
+@token_required
+def add_payment_route(id):
+    initialize_db(request.user_id)
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    try:
+        debt = add_payment(request.user_id, id, data)
+        if debt:
+            return jsonify(debt), 200
+        return jsonify({'error': 'Debt not found'}), 404
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+@bp.route('/<int:id>/interest-rate', methods=['POST'])
+@token_required
+def add_interest_rate_change_route(id):
+    initialize_db(request.user_id)
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    try:
+        debt = add_interest_rate_change(request.user_id, id, data)
+        if debt:
+            return jsonify(debt), 200
+        return jsonify({'error': 'Debt not found'}), 404
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+@bp.route('/<int:id>/amortization', methods=['GET'])
+@token_required
+def get_amortization(id):
+    initialize_db(request.user_id)
+    extra_payment = request.args.get('extra_payment', type=float)
+    interest_rate = request.args.get('interest_rate', type=float)
+    term = request.args.get('term', type=int)
+    schedule = get_amortization_schedule(request.user_id, id, extra_payment, interest_rate, term)
+    if schedule is not None:
+        return jsonify(schedule), 200
+    return jsonify({'error': 'Debt not found'}), 404
+
+
+@bp.route('/consolidated-emi', methods=['GET'])
+@token_required
+def get_consolidated_emi_route():
+    """
+    Get the consolidated EMI for all debts of the user.
+    
+    Returns:
+        JSON: The total monthly EMI for all debts.
+    """
+    initialize_db(request.user_id)
+    try:
+        total_emi = get_consolidated_emi(request.user_id)
+        return jsonify({'consolidated_emi': total_emi}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@bp.route('/total-debt', methods=['GET'])
+@token_required
+def get_total_debt_route():
+    """
+    Get the total outstanding debt for the user.
+    
+    Returns:
+        JSON: The total remaining balance for all debts.
+    """
+    initialize_db(request.user_id)
+    try:
+        total_debt = get_total_debt(request.user_id)
+        return jsonify({'total_debt': total_debt}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

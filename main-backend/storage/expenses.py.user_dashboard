@@ -1,0 +1,165 @@
+# main-backend/storage/expense.py
+import json
+from datetime import datetime
+from utils.db import get_db_connection
+
+def get_all_expenses(user_id):
+    """
+    Retrieve all expense entries for a user.
+    
+    Args:
+        user_id (int): The ID of the user.
+    
+    Returns:
+        list: A list of expense entries for the user.
+    """
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM expenses WHERE user_id = ?', (user_id,))
+    expenses = [dict(row) for row in cursor.fetchall()]
+    for expense in expenses:
+        expense['details'] = json.loads(expense['details']) if expense['details'] and expense['details'] != '' else {}
+    conn.close()
+    return expenses
+
+def get_expense_by_id(user_id, expense_id):
+    """
+    Retrieve a specific expense entry by its ID for a user.
+    
+    Args:
+        user_id (int): The ID of the user.
+        expense_id (int): The ID of the expense entry.
+    
+    Returns:
+        dict: The expense details, or None if not found.
+    """
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM expenses WHERE id = ? AND user_id = ?', (expense_id, user_id))
+    expense = cursor.fetchone()
+    if expense:
+        expense = dict(expense)
+        expense['details'] = json.loads(expense['details']) if expense['details'] and expense['details'] != '' else {}
+    conn.close()
+    return expense
+
+def add_expense(user_id, data):
+    """
+    Add a new expense entry for a user.
+    
+    Args:
+        user_id (int): The ID of the user.
+        data (dict): The expense data (amount, category, date, etc.).
+    
+    Returns:
+        dict: The added expense entry.
+    """
+    required_fields = ['amount', 'category', 'date']
+    if not all(field in data for field in required_fields):
+        raise ValueError("Missing required fields")
+
+    try:
+        amount = float(data['amount'])
+        if amount <= 0:
+            raise ValueError("Amount must be positive")
+    except (ValueError, TypeError):
+        raise ValueError("Amount must be a valid number")
+
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute(
+        'INSERT INTO expenses (user_id, amount, category, date, description, details) VALUES (?, ?, ?, ?, ?, ?)',
+        (user_id, amount, data['category'], data['date'], data.get('description', ''), json.dumps(data.get('details', {})))
+    )
+    conn.commit()
+    expense_id = cursor.lastrowid
+    cursor.execute('SELECT * FROM expenses WHERE id = ?', (expense_id,))
+    expense = dict(cursor.fetchone())
+    expense['details'] = json.loads(expense['details']) if expense['details'] and expense['details'] != '' else {}
+    conn.close()
+    return expense
+
+def update_expense(user_id, expense_id, data):
+    """
+    Update an existing expense entry for a user.
+    
+    Args:
+        user_id (int): The ID of the user.
+        expense_id (int): The ID of the expense entry.
+        data (dict): The updated expense data.
+    
+    Returns:
+        dict: The updated expense entry, or None if not found.
+    """
+    required_fields = ['amount', 'category', 'date']
+    if not all(field in data for field in required_fields):
+        raise ValueError("Missing required fields")
+
+    try:
+        amount = float(data['amount'])
+        if amount <= 0:
+            raise ValueError("Amount must be positive")
+    except (ValueError, TypeError):
+        raise ValueError("Amount must be a valid number")
+
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM expenses WHERE id = ? AND user_id = ?', (expense_id, user_id))
+    expense = cursor.fetchone()
+    if not expense:
+        conn.close()
+        return None
+
+    cursor.execute(
+        'UPDATE expenses SET amount = ?, category = ?, date = ?, description = ?, details = ? WHERE id = ? AND user_id = ?',
+        (amount, data['category'], data['date'], data.get('description', ''), json.dumps(data.get('details', {})), expense_id, user_id)
+    )
+    conn.commit()
+    cursor.execute('SELECT * FROM expenses WHERE id = ?', (expense_id,))
+    updated_expense = dict(cursor.fetchone())
+    updated_expense['details'] = json.loads(updated_expense['details']) if updated_expense['details'] and updated_expense['details'] != '' else {}
+    conn.close()
+    return updated_expense
+
+def delete_expense(user_id, expense_id):
+    """
+    Delete an expense entry for a user.
+    
+    Args:
+        user_id (int): The ID of the user.
+        expense_id (int): The ID of the expense entry.
+    
+    Returns:
+        bool: True if the expense entry was deleted, False otherwise.
+    """
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM expenses WHERE id = ? AND user_id = ?', (expense_id, user_id))
+    success = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return success
+
+
+def calculate_monthly_expenses(user_id):
+    """
+    Calculate the total monthly expenses for a user based on expense entries for the current month.
+    
+    Args:
+        user_id (int): The ID of the user.
+    
+    Returns:
+        float: The total monthly expenses for the current month.
+    """
+    expenses = get_all_expenses(user_id)
+    current_date = datetime.now()
+    total_monthly_expenses = 0.0
+
+    for expense in expenses:
+        # Parse the expense date
+        expense_date = datetime.strptime(expense['date'], '%Y-%m-%d')
+        # Consider only expenses from the current month
+        if expense_date.year == current_date.year and expense_date.month == current_date.month:
+            total_monthly_expenses += float(expense['amount'])
+
+    return round(total_monthly_expenses, 2)

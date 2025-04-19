@@ -48,7 +48,6 @@ def get_all_debts(user_id):
     conn.close()
     return debts
 
-
 def calculate_debt_metrics(principal, interest_rate, term, start_date):
     principal = float(principal)
     interest_rate = float(interest_rate) / 100
@@ -101,6 +100,7 @@ def calculate_debt_metrics(principal, interest_rate, term, start_date):
     }
 
 
+
 def get_debt_by_id(user_id, debt_id):
     conn = get_db_connection(user_id)
     cursor = conn.cursor()
@@ -145,7 +145,6 @@ def get_debt_by_id(user_id, debt_id):
     conn.commit()
     conn.close()
     return debt
-
 
 def add_debt(user_id, data):
     required_fields = ['amount', 'creditor', 'interest_rate', 'term', 'date', 'debt_type']
@@ -290,7 +289,6 @@ def add_payment(user_id, debt_id, data):
     conn.commit()
     conn.close()
     return updated_debt
-
 
 def add_interest_rate_change(user_id, debt_id, data):
     required_fields = ['interest_rate', 'date']
@@ -439,5 +437,91 @@ def get_amortization_schedule(user_id, debt_id, extra_payment=None, interest_rat
     conn.close()
     return schedule
 
+# New functions for EMI calculation
+def calculate_emi(principal, interest_rate, term):
+    """
+    Calculate the EMI for a debt based on its principal, interest rate, and term.
+    
+    Args:
+        principal (float): The principal amount (remaining balance).
+        interest_rate (float): The annual interest rate (in percentage).
+        term (int): The term in months.
+    
+    Returns:
+        float: The monthly EMI.
+    """
+    monthly_rate = (interest_rate / 100) / 12
+    if monthly_rate == 0:
+        return principal / term
+    return principal * (monthly_rate * (1 + monthly_rate) ** term) / ((1 + monthly_rate) ** term - 1)
 
+def get_debt_emi(user_id, debt_id):
+    """
+    Calculate the current EMI for a single debt, considering its remaining balance, current interest rate, and remaining term.
+    
+    Args:
+        user_id (int): The ID of the user.
+        debt_id (int): The ID of the debt.
+    
+    Returns:
+        float: The current monthly EMI for the debt.
+    """
+    debt = get_debt_by_id(user_id, debt_id)
+    if not debt:
+        return 0.0
 
+    # Get the current interest rate from interest_rate_history
+    interest_rate_history = debt['interest_rate_history']
+    current_interest_rate = debt['interest_rate']
+    if interest_rate_history:
+        # Sort by date and take the most recent rate
+        interest_rate_history.sort(key=lambda x: x['date'], reverse=True)
+        for rate_change in interest_rate_history:
+            change_date = datetime.strptime(rate_change['date'], '%Y-%m-%d')
+            if change_date <= datetime.now():
+                current_interest_rate = rate_change['interest_rate']
+                break
+
+    # Calculate remaining term
+    start_date = datetime.strptime(debt['date'], '%Y-%m-%d')
+    current_date = datetime.now()
+    elapsed_months = (current_date.year - start_date.year) * 12 + current_date.month - start_date.month
+    remaining_term = max(0, debt['term'] - elapsed_months)
+
+    if remaining_term <= 0:
+        return 0.0
+
+    # Calculate EMI based on remaining balance, current interest rate, and remaining term
+    emi = calculate_emi(debt['remaining_balance'], current_interest_rate, remaining_term)
+    return round(emi, 2)
+
+def get_consolidated_emi(user_id):
+    """
+    Calculate the consolidated EMI for all debts of a user.
+    
+    Args:
+        user_id (int): The ID of the user.
+    
+    Returns:
+        float: The total monthly EMI for all debts.
+    """
+    debts = get_all_debts(user_id)
+    total_emi = 0.0
+    for debt in debts:
+        emi = get_debt_emi(user_id, debt['id'])
+        total_emi += emi
+    return round(total_emi, 2)
+
+def get_total_debt(user_id):
+    """
+    Calculate the total outstanding debt for a user.
+    
+    Args:
+        user_id (int): The ID of the user.
+    
+    Returns:
+        float: The total remaining balance for all debts.
+    """
+    debts = get_all_debts(user_id)
+    total_debt = sum(debt['remaining_balance'] for debt in debts)
+    return round(total_debt, 2)

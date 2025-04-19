@@ -1,0 +1,126 @@
+# main-backend/routes/goals.py
+from flask import Blueprint, jsonify, request
+from storage.goals import (
+    get_all_goals,
+    get_goal_by_id,
+    add_goal,
+    update_goal,
+    delete_goal
+)
+from storage.resources import initialize_db
+from utils.auth import token_required
+
+bp = Blueprint('goals', __name__, url_prefix='/api/goals')
+
+@bp.route('', methods=['GET'])
+@token_required
+def get_goals():
+    """
+    Get all financial goals for the user.
+    
+    Returns:
+        JSON: A list of goals.
+    """
+    initialize_db(request.user_id)
+    goals = get_all_goals(request.user_id)
+    return jsonify(goals), 200
+
+@bp.route('/<int:id>', methods=['GET'])
+@token_required
+def get_goal(id):
+    """
+    Get a specific goal by its ID.
+    
+    Args:
+        id (int): The ID of the goal.
+    
+    Returns:
+        JSON: The goal details, or an error if not found.
+    """
+    initialize_db(request.user_id)
+    goal = get_goal_by_id(request.user_id, id)
+    if goal:
+        return jsonify(goal), 200
+    return jsonify({'error': 'Goal not found'}), 404
+
+@bp.route('', methods=['POST'])
+@token_required
+def create_goal():
+    """
+    Create a new financial goal for the user.
+    
+    Body:
+        JSON: Goal data (name, target_amount, target_date, etc.).
+    
+    Returns:
+        JSON: The created goal, or an error if invalid.
+    """
+    initialize_db(request.user_id)
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    try:
+        goal = add_goal(request.user_id, data)
+        return jsonify(goal), 201
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+@bp.route('/<int:id>', methods=['PUT'])
+@token_required
+def update_goal_route(id):
+    """
+    Update an existing financial goal.
+    
+    Args:
+        id (int): The ID of the goal.
+    
+    Body:
+        JSON: Updated goal data.
+    
+    Returns:
+        JSON: The updated goal, or an error if not found.
+    """
+    initialize_db(request.user_id)
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    try:
+        goal = update_goal(request.user_id, id, data)
+        if goal:
+            return jsonify(goal), 200
+        return jsonify({'error': 'Goal not found'}), 404
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+@bp.route('/<int:id>', methods=['DELETE'])
+@token_required
+def delete_goal_route(id):
+    """
+    Delete a financial goal.
+    
+    Args:
+        id (int): The ID of the goal.
+    
+    Returns:
+        JSON: Success message, or an error if not found.
+    """
+    initialize_db(request.user_id)
+    if delete_goal(request.user_id, id):
+        return jsonify({'message': 'Goal deleted'}), 200
+    return jsonify({'error': 'Goal not found'}), 404
+
+@bp.route('/monthly-contribution', methods=['GET'])
+@token_required
+def get_monthly_goal_contribution():
+    """
+    Get the total monthly contribution towards all goals for the user.
+    
+    Returns:
+        JSON: The total monthly contribution.
+    """
+    initialize_db(request.user_id)
+    try:
+        monthly_contribution = calculate_monthly_goal_contribution(request.user_id)
+        return jsonify({'monthly_contribution': monthly_contribution}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

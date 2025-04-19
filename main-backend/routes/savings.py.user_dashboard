@@ -1,0 +1,26 @@
+# main-backend/routes/savings.py
+from flask import Blueprint, jsonify, request
+from storage.savings import calculate_monthly_savings
+from storage.resources import initialize_db
+from utils.auth import token_required
+
+bp = Blueprint('savings', __name__, url_prefix='/api/savings')
+
+@bp.route('/monthly', methods=['GET'])
+@token_required
+def get_monthly_savings():
+    """
+    Get the total monthly savings for the user.
+    Total Savings = Total Income - (Total EMI + Total Expenses + Total Goal Contributions + Total Contingency Fund Allocation)
+    
+    Returns:
+        JSON: The total monthly savings.
+    """
+    initialize_db(request.user_id)
+    try:
+        monthly_savings = calculate_monthly_savings(request.user_id)
+        return jsonify({'monthly_savings': monthly_savings}), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': 'Internal server error'}), 500

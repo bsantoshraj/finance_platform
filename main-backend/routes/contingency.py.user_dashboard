@@ -1,0 +1,87 @@
+# main-backend/routes/contingency.py
+from flask import Blueprint, jsonify, request
+from storage.contingency import (
+    get_contingency_fund,
+    set_monthly_allocation,
+    add_contribution,
+    get_monthly_contingency_allocation
+)
+from storage.resources import initialize_db
+from utils.auth import token_required
+
+bp = Blueprint('contingency', __name__, url_prefix='/api/contingency')
+
+@bp.route('', methods=['GET'])
+@token_required
+def get_fund():
+    """
+    Get the contingency fund details for the user.
+    
+    Returns:
+        JSON: The contingency fund details, or an empty object if not found.
+    """
+    initialize_db(request.user_id)
+    fund = get_contingency_fund(request.user_id)
+    return jsonify(fund if fund else {}), 200
+
+@bp.route('/set-allocation', methods=['POST'])
+@token_required
+def set_allocation():
+    """
+    Set the monthly allocation for the user's contingency fund.
+    
+    Body:
+        JSON: { "monthly_allocation": float }
+    
+    Returns:
+        JSON: The updated contingency fund details, or an error if invalid.
+    """
+    initialize_db(request.user_id)
+    data = request.get_json()
+    if not data or 'monthly_allocation' not in data:
+        return jsonify({'error': 'Monthly allocation is required'}), 400
+    try:
+        fund = set_monthly_allocation(request.user_id, data['monthly_allocation'])
+        return jsonify(fund), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+@bp.route('/add-contribution', methods=['POST'])
+@token_required
+def add_fund_contribution():
+    """
+    Add a contribution to the user's contingency fund.
+    
+    Body:
+        JSON: { "amount": float }
+    
+    Returns:
+        JSON: The updated contingency fund details, or an error if invalid.
+    """
+    initialize_db(request.user_id)
+    data = request.get_json()
+    if not data or 'amount' not in data:
+        return jsonify({'error': 'Amount is required'}), 400
+    try:
+        fund = add_contribution(request.user_id, data['amount'])
+        return jsonify(fund), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+@bp.route('/monthly-allocation', methods=['GET'])
+@token_required
+def get_monthly_allocation():
+    """
+    Get the monthly allocation for the user's contingency fund.
+    
+    Returns:
+        JSON: The monthly allocation amount.
+    """
+    initialize_db(request.user_id)
+    try:
+        monthly_allocation = get_monthly_contingency_allocation(request.user_id)
+        return jsonify({'monthly_allocation': monthly_allocation}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+

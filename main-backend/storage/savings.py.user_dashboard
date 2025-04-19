@@ -1,0 +1,32 @@
+# main-backend/storage/savings.py
+from datetime import datetime
+from storage.income import calculate_monthly_income
+from storage.expense import calculate_monthly_expenses
+from storage.debts import get_consolidated_emi
+from storage.goals import calculate_monthly_goal_contribution
+from storage.contingency import get_monthly_contingency_allocation
+
+def calculate_monthly_savings(user_id):
+    """
+    Calculate the total monthly savings for a user.
+    Total Savings = Total Income - (Total EMI + Total Expenses + Total Goal Contributions + Total Contingency Fund Allocation)
+    
+    Args:
+        user_id (int): The ID of the user.
+    
+    Returns:
+        float: The total monthly savings.
+    """
+    try:
+        # Fetch all components
+        total_income = calculate_monthly_income(user_id)
+        total_expenses = calculate_monthly_expenses(user_id)
+        total_emi = get_consolidated_emi(user_id)
+        total_goal_contributions = calculate_monthly_goal_contribution(user_id)
+        total_contingency_allocation = get_monthly_contingency_allocation(user_id)
+
+        # Calculate total savings
+        total_savings = total_income - (total_emi + total_expenses + total_goal_contributions + total_contingency_allocation)
+        return round(max(0, total_savings), 2)  # Ensure savings is not negative
+    except Exception as e:
+        raise ValueError(f"Error calculating monthly savings: {str(e)}")

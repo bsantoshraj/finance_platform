@@ -1,0 +1,165 @@
+# main-backend/storage/income.py
+import json
+from datetime import datetime
+from utils.db import get_db_connection
+
+def get_all_income(user_id):
+    """
+    Retrieve all income entries for a user.
+    
+    Args:
+        user_id (int): The ID of the user.
+    
+    Returns:
+        list: A list of income entries for the user.
+    """
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM incomes WHERE user_id = ?', (user_id,))
+    incomes = [dict(row) for row in cursor.fetchall()]
+    for income in incomes:
+        income['details'] = json.loads(income['details']) if income['details'] and income['details'] != '' else {}
+    conn.close()
+    return incomes
+
+def get_income_by_id(user_id, income_id):
+    """
+    Retrieve a specific income entry by its ID for a user.
+    
+    Args:
+        user_id (int): The ID of the user.
+        income_id (int): The ID of the income entry.
+    
+    Returns:
+        dict: The income details, or None if not found.
+    """
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM incomes WHERE id = ? AND user_id = ?', (income_id, user_id))
+    income = cursor.fetchone()
+    if income:
+        income = dict(income)
+        income['details'] = json.loads(income['details']) if income['details'] and income['details'] != '' else {}
+    conn.close()
+    return income
+
+def add_income(user_id, data):
+    """
+    Add a new income entry for a user.
+    
+    Args:
+        user_id (int): The ID of the user.
+        data (dict): The income data (amount, source, date, etc.).
+    
+    Returns:
+        dict: The added income entry.
+    """
+    required_fields = ['amount', 'source', 'date']
+    if not all(field in data for field in required_fields):
+        raise ValueError("Missing required fields")
+
+    try:
+        amount = float(data['amount'])
+        if amount <= 0:
+            raise ValueError("Amount must be positive")
+    except (ValueError, TypeError):
+        raise ValueError("Amount must be a valid number")
+
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute(
+        'INSERT INTO incomes (user_id, amount, source, date, category, details) VALUES (?, ?, ?, ?, ?, ?)',
+        (user_id, amount, data['source'], data['date'], data.get('category', 'Other'), json.dumps(data.get('details', {})))
+    )
+    conn.commit()
+    income_id = cursor.lastrowid
+    cursor.execute('SELECT * FROM incomes WHERE id = ?', (income_id,))
+    income = dict(cursor.fetchone())
+    income['details'] = json.loads(income['details']) if income['details'] and income['details'] != '' else {}
+    conn.close()
+    return income
+
+def update_income(user_id, income_id, data):
+    """
+    Update an existing income entry for a user.
+    
+    Args:
+        user_id (int): The ID of the user.
+        income_id (int): The ID of the income entry.
+        data (dict): The updated income data.
+    
+    Returns:
+        dict: The updated income entry, or None if not found.
+    """
+    required_fields = ['amount', 'source', 'date']
+    if not all(field in data for field in required_fields):
+        raise ValueError("Missing required fields")
+
+    try:
+        amount = float(data['amount'])
+        if amount <= 0:
+            raise ValueError("Amount must be positive")
+    except (ValueError, TypeError):
+        raise ValueError("Amount must be a valid number")
+
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM incomes WHERE id = ? AND user_id = ?', (income_id, user_id))
+    income = cursor.fetchone()
+    if not income:
+        conn.close()
+        return None
+
+    cursor.execute(
+        'UPDATE incomes SET amount = ?, source = ?, date = ?, category = ?, details = ? WHERE id = ? AND user_id = ?',
+        (amount, data['source'], data['date'], data.get('category', 'Other'), json.dumps(data.get('details', {})), income_id, user_id)
+    )
+    conn.commit()
+    cursor.execute('SELECT * FROM incomes WHERE id = ?', (income_id,))
+    updated_income = dict(cursor.fetchone())
+    updated_income['details'] = json.loads(updated_income['details']) if updated_income['details'] and updated_income['details'] != '' else {}
+    conn.close()
+    return updated_income
+
+def delete_income(user_id, income_id):
+    """
+    Delete an income entry for a user.
+    
+    Args:
+        user_id (int): The ID of the user.
+        income_id (int): The ID of the income entry.
+    
+    Returns:
+        bool: True if the income entry was deleted, False otherwise.
+    """
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM incomes WHERE id = ? AND user_id = ?', (income_id, user_id))
+    success = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return success
+
+
+def calculate_monthly_income(user_id):
+    """
+    Calculate the total monthly income for a user based on income entries for the current month.
+    
+    Args:
+        user_id (int): The ID of the user.
+    
+    Returns:
+        float: The total monthly income for the current month.
+    """
+    incomes = get_all_income(user_id)
+    current_date = datetime.now()
+    total_monthly_income = 0.0
+
+    for income in incomes:
+        # Parse the income date
+        income_date = datetime.strptime(income['date'], '%Y-%m-%d')
+        # Consider only incomes from the current month
+        if income_date.year == current_date.year and income_date.month == current_date.month:
+            total_monthly_income += float(income['amount'])
+
+    return round(total_monthly_income, 2)

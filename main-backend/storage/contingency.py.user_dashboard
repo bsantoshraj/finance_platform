@@ -1,0 +1,130 @@
+# main-backend/storage/contingency.py
+import json
+from datetime import datetime
+from utils.db import get_db_connection
+
+def get_contingency_fund(user_id):
+    """
+    Retrieve the contingency fund details for a user.
+    
+    Args:
+        user_id (int): The ID of the user.
+    
+    Returns:
+        dict: The contingency fund details, or None if not found.
+    """
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM contingency_fund WHERE user_id = ?', (user_id,))
+    fund = cursor.fetchone()
+    if fund:
+        fund = dict(fund)
+    conn.close()
+    return fund
+
+def set_monthly_allocation(user_id, monthly_allocation):
+    """
+    Set the monthly allocation for the user's contingency fund.
+    If the fund doesn't exist, create it.
+    
+    Args:
+        user_id (int): The ID of the user.
+        monthly_allocation (float): The monthly amount to allocate to the fund.
+    
+    Returns:
+        dict: The updated contingency fund details.
+    """
+    try:
+        monthly_allocation = float(monthly_allocation)
+        if monthly_allocation < 0:
+            raise ValueError("Monthly allocation must be non-negative")
+    except (ValueError, TypeError):
+        raise ValueError("Monthly allocation must be a valid number")
+
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    # Check if the fund exists
+    cursor.execute('SELECT * FROM contingency_fund WHERE user_id = ?', (user_id,))
+    fund = cursor.fetchone()
+
+    if fund:
+        # Update existing fund
+        cursor.execute(
+            'UPDATE contingency_fund SET monthly_allocation = ?, updated_at = ? WHERE user_id = ?',
+            (monthly_allocation, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user_id)
+        )
+    else:
+        # Create new fund
+        cursor.execute(
+            'INSERT INTO contingency_fund (user_id, balance, monthly_allocation) VALUES (?, ?, ?)',
+            (user_id, 0.0, monthly_allocation)
+        )
+
+    conn.commit()
+    cursor.execute('SELECT * FROM contingency_fund WHERE user_id = ?', (user_id,))
+    updated_fund = dict(cursor.fetchone())
+    conn.close()
+    return updated_fund
+
+def add_contribution(user_id, amount):
+    """
+    Add a contribution to the user's contingency fund.
+    If the fund doesn't exist, create it with a default monthly allocation of 0.
+    
+    Args:
+        user_id (int): The ID of the user.
+        amount (float): The amount to contribute to the fund.
+    
+    Returns:
+        dict: The updated contingency fund details.
+    """
+    try:
+        amount = float(amount)
+        if amount <= 0:
+            raise ValueError("Contribution amount must be positive")
+    except (ValueError, TypeError):
+        raise ValueError("Contribution amount must be a valid number")
+
+    conn = get_db_connection(user_id)
+    cursor = conn.cursor()
+    # Check if the fund exists
+    cursor.execute('SELECT * FROM contingency_fund WHERE user_id = ?', (user_id,))
+    fund = cursor.fetchone()
+
+    if fund:
+        # Update existing fund
+        new_balance = float(fund['balance']) + amount
+        cursor.execute(
+            'UPDATE contingency_fund SET balance = ?, updated_at = ? WHERE user_id = ?',
+            (new_balance, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user_id)
+        )
+    else:
+        # Create new fund with default monthly allocation
+        cursor.execute(
+            'INSERT INTO contingency_fund (user_id, balance, monthly_allocation) VALUES (?, ?, ?)',
+            (user_id, amount, 0.0)
+        )
+
+    conn.commit()
+    cursor.execute('SELECT * FROM contingency_fund WHERE user_id = ?', (user_id,))
+    updated_fund = dict(cursor.fetchone())
+    conn.close()
+    return updated_fund
+
+def get_monthly_contingency_allocation(user_id):
+    """
+    Get the monthly allocation for the user's contingency fund.
+    
+    Args:
+        user_id (int): The ID of the user.
+    
+    Returns:
+        float: The monthly allocation amount, or 0 if the fund doesn't exist.
+    """
+    fund = get_contingency_fund(user_id)
+    if fund:
+        return float(fund['monthly_allocation'])
+    return 0.0
+
+
+
